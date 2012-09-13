@@ -241,6 +241,7 @@ public abstract class TrackerMessage {
 		public int getInterval();
 		public int getComplete();
 		public int getIncomplete();
+		public String getHexInfoHash();
 		public List<Peer> getPeers();
 	};
 

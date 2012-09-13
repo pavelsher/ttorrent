@@ -28,7 +28,7 @@ import java.util.EventListener;
  */
 public interface IncomingConnectionListener extends EventListener {
 
-	public void handleNewPeerConnection(Socket s, byte[] peerId);
+	public void handleNewPeerConnection(Socket s, byte[] peerId, String torrentIdentifier);
 
 	public void handleFailedConnection(SharingPeer peer, Throwable cause);
 }

@@ -82,6 +82,11 @@ public class UDPAnnounceResponseMessage
 	public List<Peer> getPeers() {
 		return this.peers;
 	}
+	
+	@Override
+	public String getHexInfoHash() {
+		return "";
+	}
 
 	public static UDPAnnounceResponseMessage parse(ByteBuffer data)
 		throws MessageValidationException {

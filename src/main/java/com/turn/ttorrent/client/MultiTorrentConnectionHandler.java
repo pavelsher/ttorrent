@@ -15,9 +15,6 @@
  */
 package com.turn.ttorrent.client;
 
-import com.turn.ttorrent.common.Torrent;
-import com.turn.ttorrent.client.peer.SharingPeer;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -32,6 +29,8 @@ import java.text.ParseException;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
@@ -40,6 +39,9 @@ import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.turn.ttorrent.client.peer.SharingPeer;
+import com.turn.ttorrent.common.Torrent;
 
 
 /**
@@ -75,21 +77,21 @@ import org.slf4j.LoggerFactory;
  * @author mpetazzoni
  * @see <a href="http://wiki.theory.org/BitTorrentSpecification#Handshake">BitTorrent handshake specification</a>
  */
-public class ConnectionHandler implements Runnable {
+public class MultiTorrentConnectionHandler implements Runnable {
 
 	private static final Logger logger =
-		LoggerFactory.getLogger(ConnectionHandler.class);
+		LoggerFactory.getLogger(MultiTorrentConnectionHandler.class);
 
 	public static final int PORT_RANGE_START = 6881;
 	public static final int PORT_RANGE_END = 6889;
 
 	private static final int OUTBOUND_CONNECTIONS_POOL_SIZE = 20;
 	private static final int OUTBOUND_CONNECTIONS_THREAD_KEEP_ALIVE_SECS = 10;
-
-	private SharedTorrent torrent;
+	
 	private String id;
 	private ServerSocket socket;
 	private InetSocketAddress address;
+	private ConcurrentMap<String, ClientSharedTorrent> torrents;
 
 	private Set<IncomingConnectionListener> listeners;
 	private ExecutorService executor;
@@ -111,15 +113,14 @@ public class ConnectionHandler implements Runnable {
 	 * @throws IOException When the service can't be started because no port in
 	 * the defined range is available or usable.
 	 */
-	ConnectionHandler(SharedTorrent torrent, String id, InetAddress address)
+	MultiTorrentConnectionHandler(String id, InetAddress address)
 		throws IOException {
-		this.torrent = torrent;
 		this.id = id;
 
 		// Bind to the first available port in the range
 		// [PORT_RANGE_START; PORT_RANGE_END].
-		for (int port = ConnectionHandler.PORT_RANGE_START;
-				port <= ConnectionHandler.PORT_RANGE_END;
+		for (int port = MultiTorrentConnectionHandler.PORT_RANGE_START;
+				port <= MultiTorrentConnectionHandler.PORT_RANGE_END;
 				port++) {
 			InetSocketAddress tryAddress =
 				new InetSocketAddress(address, port);
@@ -140,8 +141,13 @@ public class ConnectionHandler implements Runnable {
 		}
 
 		this.listeners = new HashSet<IncomingConnectionListener>();
+		this.torrents = new ConcurrentHashMap<String, ClientSharedTorrent>();
 		this.executor = null;
 		this.thread = null;
+	}
+	
+	public void addTorrent(ClientSharedTorrent torrent) {
+		this.torrents.put(torrent.getHexInfoHash(), torrent);
 	}
 
 	/**
@@ -285,8 +291,8 @@ public class ConnectionHandler implements Runnable {
 		try {
 			logger.debug("New incoming connection ...");
 			Handshake hs = this.validateHandshake(socket, null);
-			this.sendHandshake(socket);
-			this.fireNewPeerConnection(socket, hs.getPeerId());
+			this.sendHandshake(socket, hs.getInfoHash());
+			this.fireNewPeerConnection(socket, hs.getPeerId(), Torrent.byteArrayToHexString(hs.getInfoHash()));
 		} catch (ParseException pe) {
 			logger.debug("Invalid handshake from {}: {}",
 				this.socketRepr(socket), pe.getMessage());
@@ -324,13 +330,13 @@ public class ConnectionHandler implements Runnable {
 	 *
 	 * @param peer The peer to connect to.
 	 */
-	public void connect(SharingPeer peer) {
+	public void connect(SharingPeer peer, byte[] torrentInfoHash) {
 		if (!this.isAlive()) {
 			throw new IllegalStateException(
 				"Connection handler is not accepting new peers at this time!");
 		}
 
-		this.executor.submit(new ConnectorTask(this, peer));
+		this.executor.submit(new ConnectorTask(this, peer, torrentInfoHash));
 	}
 
 	/**
@@ -360,11 +366,16 @@ public class ConnectionHandler implements Runnable {
 
 		// Parse and check the handshake
 		Handshake hs = Handshake.parse(ByteBuffer.wrap(data));
-		if (!Arrays.equals(hs.getInfoHash(), this.torrent.getInfoHash())) {
-			throw new ParseException("Handshake for unknow torrent " +
-					Torrent.byteArrayToHexString(hs.getInfoHash()) +
-					" from " + this.socketRepr(socket) + ".", pstrlen + 9);
+		
+		ClientSharedTorrent hsTorrent = this.torrents.get(Torrent.byteArrayToHexString(hs.getInfoHash()));
+		if (hsTorrent != null) {
+			if (!Arrays.equals(hs.getInfoHash(), hsTorrent.getInfoHash())) {
+				throw new ParseException("Handshake for unknow torrent " +
+						Torrent.byteArrayToHexString(hs.getInfoHash()) +
+						" from " + this.socketRepr(socket) + ".", pstrlen + 9);
+			}
 		}
+		
 
 		if (peerId != null && !Arrays.equals(hs.getPeerId(), peerId)) {
 			throw new ParseException("Announced peer ID " +
@@ -381,9 +392,9 @@ public class ConnectionHandler implements Runnable {
 	 *
 	 * @param socket The socket to the remote peer.
 	 */
-	private void sendHandshake(Socket socket) throws IOException {
+	private void sendHandshake(Socket socket, byte[] infoHash) throws IOException {
 		OutputStream os = socket.getOutputStream();
-		os.write(Handshake.craft(this.torrent.getInfoHash(),
+		os.write(Handshake.craft(infoHash,
 					this.id.getBytes(Torrent.BYTE_ENCODING)).getBytes());
 	}
 
@@ -393,9 +404,9 @@ public class ConnectionHandler implements Runnable {
 	 * @param socket The socket to the newly connected peer.
 	 * @param peerId The peer ID of the connected peer.
 	 */
-	private void fireNewPeerConnection(Socket socket, byte[] peerId) {
+	private void fireNewPeerConnection(Socket socket, byte[] peerId, String torrentIdentifier) {
 		for (IncomingConnectionListener listener : this.listeners) {
-			listener.handleNewPeerConnection(socket, peerId, "");
+			listener.handleNewPeerConnection(socket, peerId, torrentIdentifier);
 		}
 	}
 
@@ -440,12 +451,14 @@ public class ConnectionHandler implements Runnable {
 	 */
 	private static class ConnectorTask implements Runnable {
 
-		private final ConnectionHandler handler;
+		private final MultiTorrentConnectionHandler handler;
 		private final SharingPeer peer;
+		private final byte[] infoHash;
 
-		private ConnectorTask(ConnectionHandler handler, SharingPeer peer) {
+		private ConnectorTask(MultiTorrentConnectionHandler handler, SharingPeer peer, byte[] infoHash) {
 			this.handler = handler;
 			this.peer = peer;
+			this.infoHash = infoHash;
 		}
 
 		@Override
@@ -458,14 +471,14 @@ public class ConnectionHandler implements Runnable {
 				logger.info("Connecting to {}...", this.peer);
 				socket.connect(address, 3*1000);
 
-				this.handler.sendHandshake(socket);
+				this.handler.sendHandshake(socket, infoHash);
 				Handshake hs = this.handler.validateHandshake(socket,
 					(this.peer.hasPeerId()
 						 ? this.peer.getPeerId().array()
 						 : null));
 				logger.info("Handshaked with {}, peer ID is {}.",
 					this.peer, Torrent.byteArrayToHexString(hs.getPeerId()));
-				this.handler.fireNewPeerConnection(socket, hs.getPeerId());
+				this.handler.fireNewPeerConnection(socket, hs.getPeerId(), Torrent.byteArrayToHexString(hs.getInfoHash()));
 			} catch (IOException ioe) {
 				try { socket.close(); } catch (IOException e) { }
 				this.handler.fireFailedConnection(this.peer, ioe);

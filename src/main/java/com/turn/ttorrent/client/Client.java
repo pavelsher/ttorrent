@@ -629,7 +629,7 @@ public class Client extends Observable implements Runnable,
 	 * any other means like DHT/PEX, etc.).
 	 */
 	@Override
-	public void handleDiscoveredPeers(List<Peer> peers) {
+	public void handleDiscoveredPeers(List<Peer> peers, String hexInfoHash) {
 		if (peers == null || peers.isEmpty()) {
 			// No peers returned by the tracker. Apparently we're alone on
 			// this one for now.
@@ -686,7 +686,7 @@ public class Client extends Observable implements Runnable,
 	 * @see com.turn.ttorrent.client.peer.SharingPeer
 	 */
 	@Override
-	public void handleNewPeerConnection(Socket s, byte[] peerId) {
+	public void handleNewPeerConnection(Socket s, byte[] peerId, String torrentIdentifier) {
 		Peer search = new Peer(
 			s.getInetAddress().getHostAddress(),
 			s.getPort(),

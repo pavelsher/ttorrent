@@ -762,4 +762,8 @@ public class SharingPeer extends Peer implements MessageListener {
 			.append("]")
 			.toString();
 	}
+	
+	public String getTorrentHexInfoHash() {
+		return this.torrent.getHexInfoHash();
+	}
 }
