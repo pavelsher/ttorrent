@@ -33,7 +33,11 @@ public class BEValue {
 	 * The B-encoded value can be a byte array, a Number, a List or a Map.
 	 * Lists and Maps contains BEValues too.
 	 */
-	private final Object value;
+	private Object value;
+	
+	public BEValue() {
+		
+	}
 
 	public BEValue(byte[] value) {
 		this.value = value;
@@ -70,6 +74,10 @@ public class BEValue {
 
 	public Object getValue() {
 		return this.value;
+	}
+	
+	public void setValue(Object value) {
+		this.value = value;
 	}
 
 	/**

@@ -46,6 +46,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
+import javax.xml.bind.annotation.XmlRootElement;
+import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
+
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.ConsoleAppender;
 import org.apache.log4j.PatternLayout;
@@ -73,6 +76,7 @@ import com.turn.ttorrent.bcodec.BEncoder;
  * @author mpetazzoni
  * @see <a href="http://wiki.theory.org/BitTorrentSpecification#Metainfo_File_Structure">Torrent meta-info file structure specification</a>
  */
+@XmlRootElement(name="torrent")
 public class Torrent extends Observable {
 
 	private static final Logger logger =
@@ -93,34 +97,49 @@ public class Torrent extends Observable {
 	 */
 	public static class TorrentFile {
 
-		public final File file;
-		public final long size;
+		public File file;
+		public long size;
 
+		public TorrentFile() {
+		
+		}
+		
 		public TorrentFile(File file, long size) {
 			this.file = file;
+			this.size = size;
+		}
+		
+		public void setFile(File file) {
+			this.file = file;
+		}
+		
+		public void setSize(long size) {
 			this.size = size;
 		}
 	};
 
 
-	protected final byte[] encoded;
-	protected final byte[] encoded_info;
-	protected final Map<String, BEValue> decoded;
-	protected final Map<String, BEValue> decoded_info;
+	protected byte[] encoded;
+	protected byte[] encoded_info;
+	protected Map<String, BEValue> decoded;
+	protected Map<String, BEValue> decoded_info;
 
-	private final byte[] info_hash;
-	private final String hex_info_hash;
+	private byte[] info_hash;
+	private String hex_info_hash;
 
-	private final List<List<URI>> trackers;
-	private final Set<URI> allTrackers;
-	private final Date creationDate;
-	private final String comment;
-	private final String createdBy;
-	private final String name;
-	private final long size;
-	protected final List<TorrentFile> files;
+	private List<List<URI>> trackers;
+	private Set<URI> allTrackers;
+	private Date creationDate;
+	private String comment;
+	private String createdBy;
+	private String name;
+	private long size;
+	protected List<TorrentFile> files;
 
-	private final boolean seeder;
+	private boolean seeder;
+	
+	public Torrent() {
+	}
 
 	/**
 	 * Create a new torrent from meta-info binary data.
@@ -794,5 +813,102 @@ public class Torrent extends Observable {
 			logger.error("{}", e.getMessage(), e);
 			System.exit(2);
 		}
+	}
+	
+	public byte[] getEncoded_info() {
+		return encoded_info;
+	}
+
+	public void setEncoded_info(byte[] encoded_info) {
+		this.encoded_info = encoded_info;
+	}
+
+	public Map<String, BEValue> getDecoded() {
+		return decoded;
+	}
+
+	public void setDecoded(Map<String, BEValue> decoded) {
+		this.decoded = decoded;
+	}
+
+	public Map<String, BEValue> getDecoded_info() {
+		return decoded_info;
+	}
+
+	public void setDecoded_info(Map<String, BEValue> decoded_info) {
+		this.decoded_info = decoded_info;
+	}
+
+	public byte[] getInfo_hash() {
+		return info_hash;
+	}
+
+	public void setInfo_hash(byte[] info_hash) {
+		this.info_hash = info_hash;
+	}
+
+	public String getHex_info_hash() {
+		return hex_info_hash;
+	}
+
+	public void setHex_info_hash(String hex_info_hash) {
+		this.hex_info_hash = hex_info_hash;
+	}
+
+	@XmlJavaTypeAdapter(TrackerAdapter.class)
+	public List<List<URI>> getTrackers() {
+		return trackers;
+	}
+
+	public void setTrackers(List<List<URI>> trackers) {
+		this.trackers = trackers;
+	}
+
+	public Set<URI> getAllTrackers() {
+		return allTrackers;
+	}
+
+	public void setAllTrackers(Set<URI> allTrackers) {
+		this.allTrackers = allTrackers;
+	}
+
+	public Date getCreationDate() {
+		return creationDate;
+	}
+
+	public void setCreationDate(Date creationDate) {
+		this.creationDate = creationDate;
+	}
+
+	public List<TorrentFile> getFiles() {
+		return files;
+	}
+
+	public void setFiles(List<TorrentFile> files) {
+		this.files = files;
+	}
+
+	public void setEncoded(byte[] encoded) {
+		this.encoded = encoded;
+	}
+
+	public void setComment(String comment) {
+		this.comment = comment;
+	}
+
+	public void setCreatedBy(String createdBy) {
+		this.createdBy = createdBy;
+	}
+
+	public void setName(String name) {
+		this.name = name;
+	}
+
+	public void setSize(long size) {
+		this.size = size;
+	}
+
+	public void setSeeder(boolean seeder) {
+		this.seeder = seeder;
 	}
 }

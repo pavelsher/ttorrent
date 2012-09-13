@@ -54,7 +54,12 @@ public class MultiTorrentClient implements
 	
 	private ConcurrentMap<String, ClientSharedTorrent> torrents = new ConcurrentHashMap<String, ClientSharedTorrent>();
 	
-	public MultiTorrentClient(InetAddress address)
+	public MultiTorrentClient(InetAddress address) 
+			throws UnknownHostException, IOException {	
+		this(address, address);	
+	}
+	
+	public MultiTorrentClient(InetAddress localAddress, InetAddress publicAddress)
 			throws UnknownHostException, IOException {
 		
 		String id = MultiTorrentClient.BITTORRENT_ID_PREFIX + UUID.randomUUID()
@@ -62,12 +67,11 @@ public class MultiTorrentClient implements
 
 		// Initialize the incoming connection handler and register ourselves to
 		// it.
-		this.service = new MultiTorrentConnectionHandler(id, address);
+		this.service = new MultiTorrentConnectionHandler(id, localAddress);
 		this.service.register(this);
 		
 		this.self = new Peer(
-			this.service.getSocketAddress()
-				.getAddress().getHostAddress(),
+			publicAddress.getHostAddress(),
 			(short)this.service.getSocketAddress().getPort(),
 			ByteBuffer.wrap(id.getBytes(Torrent.BYTE_ENCODING)));
 		
