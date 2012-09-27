@@ -35,17 +35,17 @@ public class ClientSharedTorrent extends SharedTorrent {
 	private long seed;
 	private boolean stop;
 	
-	public ClientSharedTorrent(Torrent torrent, File destDir)
+	public ClientSharedTorrent(Torrent torrent, File destDir, boolean multiThreadHash)
 			throws FileNotFoundException, IOException, NoSuchAlgorithmException {
-		super(torrent, destDir);
+		super(torrent, destDir, multiThreadHash);
 		this.peers = new ConcurrentHashMap<String, SharingPeer>();
 		this.connected = new ConcurrentHashMap<String, SharingPeer>();
 		this.random = new Random(System.currentTimeMillis());
 	}
 
-	public ClientSharedTorrent(byte[] torrent, File destDir)
+	public ClientSharedTorrent(byte[] torrent, File destDir, boolean multiThreadHash)
 			throws FileNotFoundException, IOException, NoSuchAlgorithmException {
-		super(torrent, destDir);
+		super(torrent, destDir, multiThreadHash);
 		this.peers = new ConcurrentHashMap<String, SharingPeer>();
 		this.connected = new ConcurrentHashMap<String, SharingPeer>();
 		this.random = new Random(System.currentTimeMillis());
@@ -60,13 +60,13 @@ public class ClientSharedTorrent extends SharedTorrent {
 	 * @throws IOException When the torrent file cannot be read or decoded.
 	 * @throws NoSuchAlgorithmException
 	 */
-	public static ClientSharedTorrent fromFile(File source, File parent)
+	public static ClientSharedTorrent fromFile(File source, File parent, boolean multiThreadHash)
 		throws IOException, NoSuchAlgorithmException {
 		FileInputStream fis = new FileInputStream(source);
 		byte[] data = new byte[(int)source.length()];
 		fis.read(data);
 		fis.close();
-		return new ClientSharedTorrent(data, parent);
+		return new ClientSharedTorrent(data, parent, multiThreadHash);
 	}
 	
 	public void initialize() throws IOException {

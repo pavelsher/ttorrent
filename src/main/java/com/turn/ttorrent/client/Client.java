@@ -1039,7 +1039,7 @@ public class Client extends Observable implements Runnable,
 				getIPv4Address(ifaceValue),
 				SharedTorrent.fromFile(
 					new File(otherArgs[0]),
-					new File(outputValue)));
+					new File(outputValue), false));
 
 			// Set a shutdown hook that will stop the sharing/seeding and send
 			// a STOPPED announce request.
