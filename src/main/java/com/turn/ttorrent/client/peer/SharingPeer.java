@@ -296,7 +296,7 @@ public class SharingPeer extends Peer implements MessageListener {
 	/**
 	 * Tells whether this peer as an active connection through a peer exchange.
 	 */
-	public boolean isBound() {
+	public boolean isConnected() {
 		if (this.exchange == null) {
 			return this.bound;
 		}
@@ -357,7 +357,7 @@ public class SharingPeer extends Peer implements MessageListener {
 	public void send(PeerMessage message) throws IllegalStateException {
 		if (this.exchange != null) {
 			synchronized (this.exchangeLock) {
-				if (this.isBound()) {
+				if (this.isConnected()) {
 					this.exchange.send(message);
 				}
 			}

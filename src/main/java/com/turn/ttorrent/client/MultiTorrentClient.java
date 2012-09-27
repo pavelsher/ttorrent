@@ -9,7 +9,6 @@ import java.net.UnknownServiceException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.text.ParseException;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.HashMap;
@@ -269,7 +268,7 @@ public class MultiTorrentClient implements
 		// Attach the SharingPeer to the selection key
 		this.torrentPeerAssociations.put(sc, new TorrentPeerWrapper(peer, hexInfoHash));
 		
-		if (peer.isBound()) {
+		if (peer.isConnected()) {
 			return;
 		}
 		
@@ -426,7 +425,7 @@ public class MultiTorrentClient implements
 				//	   of connecting to peers that need to download
 				//     something), or we are a seeder but we're still
 				//     willing to initiate some out bound connections.
-				if (match.isBound() ||
+				if (match.isConnected() ||
 					(torrent.isComplete() && torrent.getConnected().size() >=
 						MultiTorrentClient.VOLUNTARY_OUTBOUND_CONNECTIONS)) {
 					return;
