@@ -1,13 +1,20 @@
 package com.turn.ttorrent.client;
 
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.net.UnknownServiceException;
 import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
+import java.text.ParseException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.BitSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -19,6 +26,8 @@ import com.turn.ttorrent.client.Client.ClientState;
 import com.turn.ttorrent.client.announce.AnnounceException;
 import com.turn.ttorrent.client.announce.AnnounceResponseListener;
 import com.turn.ttorrent.client.announce.MultiTorrentAnnounce;
+import com.turn.ttorrent.client.nio.PeerCommunicationManager;
+import com.turn.ttorrent.client.nio.TorrentPeerWrapper;
 import com.turn.ttorrent.client.peer.PeerActivityListener;
 import com.turn.ttorrent.client.peer.SharingPeer;
 import com.turn.ttorrent.common.Peer;
@@ -26,8 +35,15 @@ import com.turn.ttorrent.common.Torrent;
 import com.turn.ttorrent.common.protocol.PeerMessage;
 import com.turn.ttorrent.common.protocol.TrackerMessage;
 
+/**
+ * An implementation of the Client class that manages multiple torrents and uses a non-blocking IO setup. 
+ * This was mainly created to significantly reduce thread counts.
+ * 
+ * @author cshoff
+ *
+ */
 public class MultiTorrentClient implements 
-	Runnable, AnnounceResponseListener, IncomingConnectionListener, PeerActivityListener {
+	Runnable, AnnounceResponseListener, CommunicationListener, PeerActivityListener {
 	
 	private static final Logger logger =
 			LoggerFactory.getLogger(MultiTorrentClient.class);
@@ -46,12 +62,18 @@ public class MultiTorrentClient implements
 	public static final int MAX_DOWNLOADERS_UNCHOKE = 4;
 	private static final int VOLUNTARY_OUTBOUND_CONNECTIONS = 20;
 	
-	private MultiTorrentConnectionHandler service;
+	private PeerCommunicationManager service;
 	private MultiTorrentAnnounce announce;
 	private Peer self;
+	private String id;
+	
+	// Map of socket channels to torrents and peers. This allows us to quickly determine what peers we are talking to
+	// when a connection is being created and managed.
+	private Map<SocketChannel, TorrentPeerWrapper> torrentPeerAssociations = new HashMap<SocketChannel, TorrentPeerWrapper>();
 	
 	Thread thread;
 	
+	// List of all torrents this client is currently sharing/downloading
 	private ConcurrentMap<String, ClientSharedTorrent> torrents = new ConcurrentHashMap<String, ClientSharedTorrent>();
 	
 	public MultiTorrentClient(InetAddress address) 
@@ -62,17 +84,17 @@ public class MultiTorrentClient implements
 	public MultiTorrentClient(InetAddress localAddress, InetAddress publicAddress)
 			throws UnknownHostException, IOException {
 		
-		String id = MultiTorrentClient.BITTORRENT_ID_PREFIX + UUID.randomUUID()
+		this.id = MultiTorrentClient.BITTORRENT_ID_PREFIX + UUID.randomUUID()
 				.toString().split("-")[4];
 
-		// Initialize the incoming connection handler and register ourselves to
+		// Initialize the peer communication manager and register ourselves to
 		// it.
-		this.service = new MultiTorrentConnectionHandler(id, localAddress);
+		this.service = new PeerCommunicationManager(localAddress, id);
 		this.service.register(this);
 		
 		this.self = new Peer(
 			publicAddress.getHostAddress(),
-			(short)this.service.getSocketAddress().getPort(),
+			(short)this.service.getAddress().getPort(),
 			ByteBuffer.wrap(id.getBytes(Torrent.BYTE_ENCODING)));
 		
 		// Initialize the announce request thread, and register ourselves to it
@@ -83,10 +105,15 @@ public class MultiTorrentClient implements
 		start();
 	}
 	
+	/**
+	 * Add a torrent to this client to be shared/downloaded.
+	 * @param torrent to be added
+	 * @throws UnknownHostException
+	 * @throws UnknownServiceException
+	 */
 	public void addTorrent(ClientSharedTorrent torrent) throws UnknownHostException, UnknownServiceException {
 		this.torrents.put(torrent.getHexInfoHash(), torrent);
 		this.announce.addTorrent(torrent);
-		this.service.addTorrent(torrent);
 	}
 	
 	public void start() {
@@ -104,9 +131,123 @@ public class MultiTorrentClient implements
 			torrent.share();
 		}
 	}
-
+	
 	@Override
-	public void handleNewPeerConnection(Socket s, byte[] peerId, String hexInfoHash) {
+	public void handleNewConnection(SocketChannel socketChannel, String hexInfoHash) {
+		try {
+			byte[] handshakeData = Handshake.craft(this.torrents.get(hexInfoHash).getInfoHash(),
+						this.id.getBytes(Torrent.BYTE_ENCODING)).getBytes();
+			this.service.send(socketChannel, handshakeData);
+		} catch (UnsupportedEncodingException e) {
+			logger.error("There was a problem creating the handshake", e);
+		}
+	}
+	
+	@Override
+	public void handleReturnedHandshake(SocketChannel socketChannel, List<ByteBuffer> data) {
+		try {
+			Handshake hs = this.validateHandshake(socketChannel, data.get(0).array(), null);
+			this.handleNewPeerConnection(socketChannel, hs.getPeerId(), Torrent.byteArrayToHexString(hs.getInfoHash()));
+		} catch (IOException e) {
+			logger.error("There was a problem validating the returned handshake.", e);
+		} catch (ParseException e) {
+			logger.error("There was a problem validating the returned handshake.", e);
+		}
+	}
+	
+	@Override
+	public void handleNewData(SocketChannel socketChannel, List<ByteBuffer> data) {
+		for (ByteBuffer singleData : data) {
+			handleMessage(singleData, socketChannel);
+		}
+	}
+	
+	/**
+	 * Takes a byte buffer of data and its originating socket channel, determines what type of message it was and handles it.
+	 * @param data
+	 * @param socketChannel
+	 */
+	private void handleMessage(ByteBuffer data, SocketChannel socketChannel) {
+		
+		int pstrlen = Byte.valueOf(data.get()).intValue();
+		TorrentPeerWrapper tpw = this.torrentPeerAssociations.get(socketChannel);
+		
+		if (pstrlen >= 0 && data.remaining() == Handshake.BASE_HANDSHAKE_LENGTH + pstrlen - 1) {
+			try {
+				Handshake hs = this.validateHandshake(socketChannel, data.array(), null);
+				if (tpw != null && tpw.peer != null) {
+					return;
+				}
+				byte[] handshakeData = Handshake.craft(hs.getInfoHash(),
+						this.id.getBytes(Torrent.BYTE_ENCODING)).getBytes();
+				this.service.send(socketChannel, handshakeData);
+				this.handleNewPeerConnection(socketChannel, hs.getPeerId(), Torrent.byteArrayToHexString(hs.getInfoHash()));
+			} catch (IOException e) {
+				logger.error("There was a problem validating the handshake.", e);
+			} catch (ParseException e) {
+				logger.error("There was a problem validating the handshake.", e);
+			}
+		} else {
+			if (tpw.peer != null) {
+
+				SharingPeer peer = tpw.peer;
+				try {
+					PeerMessage msg;
+					msg = PeerMessage.parse(data, this.torrents.get(tpw.torrentInfoHash));
+					peer.handleMessage(msg);
+				} catch (ParseException e) {
+					logger.error("There was a problem parsing the PeerMessage", e);
+				}
+				
+			} else {
+				logger.error("Can't find an associated peer.");
+			}
+		}
+	}
+	
+	/**
+	 * Validate an expected handshake on a connection.
+	 *
+	 * <p>
+	 * Reads an expected handshake message from the given connected socket,
+	 * parses it and validates that the torrent hash_info corresponds to the
+	 * torrent we're sharing, and that the peerId matches the peer ID we expect
+	 * to see coming from the remote peer.
+	 * </p>
+	 *
+	 * @param socketChannel The socket channel for the remote peer.
+	 * @param data The handshake data
+	 * @param peerId The peer ID we expect in the handshake. If <em>null</em>,
+	 * any peer ID is accepted (this is the case for incoming connections).
+	 * @return The validated handshake message object.
+	 */
+	public Handshake validateHandshake(SocketChannel socketChannel, byte[] data, byte[] peerId)
+			throws IOException, ParseException {
+
+			// Parse and check the handshake
+			Handshake hs = Handshake.parse(ByteBuffer.wrap(data));
+			
+			ClientSharedTorrent hsTorrent = this.torrents.get(Torrent.byteArrayToHexString(hs.getInfoHash()));
+			if (hsTorrent != null) {
+				if (!Arrays.equals(hs.getInfoHash(), hsTorrent.getInfoHash())) {
+					throw new ParseException("Handshake for unknown torrent " +
+							Torrent.byteArrayToHexString(hs.getInfoHash()) +
+							" from " + PeerCommunicationManager.socketRepr(socketChannel.socket()) + ".", 1); //TODO: Hardcoded as 1 for now
+				}
+			}
+			
+
+			if (peerId != null && !Arrays.equals(hs.getPeerId(), peerId)) {
+				throw new ParseException("Announced peer ID " +
+						Torrent.byteArrayToHexString(hs.getPeerId()) +
+						" did not match expected peer ID " +
+						Torrent.byteArrayToHexString(peerId) + ".", 2); //TODO: Hardcoded as 2 for now
+			}
+
+			return hs;
+		}
+
+	public void handleNewPeerConnection(SocketChannel sc, byte[] peerId, String hexInfoHash) {
 		ClientSharedTorrent torrent = this.torrents.get(hexInfoHash);
 		
 		if (torrent == null) {
@@ -114,41 +255,34 @@ public class MultiTorrentClient implements
 			return;
 		}
 		
-		Peer search = new Peer(
-			s.getInetAddress().getHostAddress(),
-			s.getPort(),
+ 		Peer search = new Peer(
+			sc.socket().getInetAddress().getHostAddress(),
+			sc.socket().getPort(),
 			(peerId != null
 				? ByteBuffer.wrap(peerId)
 				: (ByteBuffer)null));
 	
 		logger.info("Handling new peer connection with {}...", search);
 		SharingPeer peer = torrent.getOrCreatePeer(search);
+		peer.setSocketChannel(sc);
+		
+		// Attach the SharingPeer to the selection key
+		this.torrentPeerAssociations.put(sc, new TorrentPeerWrapper(peer, hexInfoHash));
+		
+		if (peer.isBound()) {
+			return;
+		}
+		
+		peer.setBound(true);
+		peer.resetRates();
+		torrent.getConnected().put(peer.getHexPeerId(), peer);
+		peer.register(torrent);
+		peer.register(this);
 	
-		try {
-			synchronized (peer) {
-				if (peer.isBound()) {
-					logger.info("Already connected with {}, closing link.",
-						peer);
-					s.close();
-					return;
-				}
-	
-				peer.register(this);
-				peer.bind(s);
-			}
-	
-			torrent.getConnected().put(peer.getHexPeerId(), peer);
-			peer.register(torrent);
-			logger.debug("New peer connection with {} [{}/{}].",
-				new Object[] {
-					peer,
-					torrent.getConnected().size(),
-					torrent.getPeers().size()
-				});
-		} catch (Exception e) {
-			torrent.getConnected().remove(peer.getHexPeerId());
-			logger.warn("Could not handle new peer connection " +
-					"with {}: {}", peer, e.getMessage());
+		// If we have pieces, start by sending a BITFIELD message to the peer.
+		BitSet pieces = this.torrents.get(hexInfoHash).getCompletedPieces();
+		if (pieces.cardinality() > 0) {
+			this.service.send(sc, PeerMessage.BitfieldMessage.craft(pieces).getData().array());
 		}
 	}
 
@@ -298,7 +432,12 @@ public class MultiTorrentClient implements
 					return;
 				}
 
-				this.service.connect(match, torrent.getInfoHash());
+				try {
+					logger.info("Connecting to {}...", peer);
+					SocketChannel sc = this.service.connect(match.getAddress(), match.getPort(), torrent.getInfoHash());
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
 			}
 		}
 	}
@@ -366,5 +505,13 @@ public class MultiTorrentClient implements
 	@Override
 	public void handlePieceSent(SharingPeer peer,
 			Piece piece) { /* Do nothing */ }
-	
+
+	@Override
+	public void sendPeerMessage(SharingPeer peer, PeerMessage message) {
+		this.service.send(peer.getSocketChannel(), message.getData().array());
+	}
+
+	@Override
+	public void handleNewPeerConnection(Socket s, byte[] peerId,
+			String torrentIdentifier) {	/* Do nothing */ }	
 }

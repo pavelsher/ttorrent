@@ -15,15 +15,7 @@
  */
 package com.turn.ttorrent.client;
 
-import com.turn.ttorrent.client.announce.Announce;
-import com.turn.ttorrent.client.announce.AnnounceException;
-import com.turn.ttorrent.client.announce.AnnounceResponseListener;
-import com.turn.ttorrent.client.peer.PeerActivityListener;
-import com.turn.ttorrent.common.Peer;
-import com.turn.ttorrent.common.Torrent;
-import com.turn.ttorrent.common.protocol.PeerMessage;
-import com.turn.ttorrent.common.protocol.TrackerMessage;
-import com.turn.ttorrent.client.peer.SharingPeer;
+import jargs.gnu.CmdLineParser;
 
 import java.io.File;
 import java.io.IOException;
@@ -35,6 +27,7 @@ import java.net.Socket;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
 import java.nio.channels.UnsupportedAddressTypeException;
 import java.util.BitSet;
 import java.util.Comparator;
@@ -51,13 +44,21 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-import jargs.gnu.CmdLineParser;
-
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.ConsoleAppender;
 import org.apache.log4j.PatternLayout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.turn.ttorrent.client.announce.Announce;
+import com.turn.ttorrent.client.announce.AnnounceException;
+import com.turn.ttorrent.client.announce.AnnounceResponseListener;
+import com.turn.ttorrent.client.peer.PeerActivityListener;
+import com.turn.ttorrent.client.peer.SharingPeer;
+import com.turn.ttorrent.common.Peer;
+import com.turn.ttorrent.common.Torrent;
+import com.turn.ttorrent.common.protocol.PeerMessage;
+import com.turn.ttorrent.common.protocol.TrackerMessage;
 
 /**
  * A pure-java BitTorrent client.
@@ -83,7 +84,7 @@ import org.slf4j.LoggerFactory;
  * @author mpetazzoni
  */
 public class Client extends Observable implements Runnable,
-	AnnounceResponseListener, IncomingConnectionListener, PeerActivityListener {
+	AnnounceResponseListener, CommunicationListener, PeerActivityListener {
 
 	private static final Logger logger =
 		LoggerFactory.getLogger(Client.class);
@@ -666,7 +667,7 @@ public class Client extends Observable implements Runnable,
 	}
 
 
-	/** IncomingConnectionListener handler(s). ********************************/
+	/** CommunicationListener handler(s). ********************************/
 
 	/**
 	 * Handle a new peer connection.
@@ -764,6 +765,10 @@ public class Client extends Observable implements Runnable,
 	@Override
 	public void handlePieceSent(SharingPeer peer,
 			Piece piece) { /* Do nothing */ }
+	
+	@Override
+	public void sendPeerMessage(SharingPeer peer, 
+			PeerMessage message) { /* Do nothing */ }
 
 	/**
 	 * Piece download completion handler.
@@ -1050,4 +1055,13 @@ public class Client extends Observable implements Runnable,
 			System.exit(2);
 		}
 	}
+
+	@Override
+	public void handleNewConnection(SocketChannel s, String hexInfoHash) { /* Do nothing */}
+
+	@Override
+	public void handleReturnedHandshake(SocketChannel s, List<ByteBuffer> data) { /* Do nothing */ }
+
+	@Override
+	public void handleNewData(SocketChannel s, List<ByteBuffer> data) { /* Do nothing */ }
 }

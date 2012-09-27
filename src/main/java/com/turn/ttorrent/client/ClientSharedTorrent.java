@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
 import com.turn.ttorrent.client.Client.ClientState;
 import com.turn.ttorrent.client.peer.SharingPeer;
 import com.turn.ttorrent.common.Peer;
+import com.turn.ttorrent.common.Torrent;
 
 public class ClientSharedTorrent extends SharedTorrent {
 	
@@ -33,6 +34,14 @@ public class ClientSharedTorrent extends SharedTorrent {
 	private Random random;
 	private long seed;
 	private boolean stop;
+	
+	public ClientSharedTorrent(Torrent torrent, File destDir)
+			throws FileNotFoundException, IOException, NoSuchAlgorithmException {
+		super(torrent, destDir);
+		this.peers = new ConcurrentHashMap<String, SharingPeer>();
+		this.connected = new ConcurrentHashMap<String, SharingPeer>();
+		this.random = new Random(System.currentTimeMillis());
+	}
 
 	public ClientSharedTorrent(byte[] torrent, File destDir)
 			throws FileNotFoundException, IOException, NoSuchAlgorithmException {

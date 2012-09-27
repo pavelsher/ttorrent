@@ -62,7 +62,7 @@ import org.slf4j.LoggerFactory;
  * Outgoing connections to other peers are also made through this service,
  * which handles the handshake procedure with the remote peer. Regardless of
  * the direction of the connection, once this handshake is successful, all
- * {@link IncomingConnectionListener}s are notified and passed the connected
+ * {@link CommunicationListener}s are notified and passed the connected
  * socket and the remote peer ID.
  * </p>
  *
@@ -91,7 +91,7 @@ public class ConnectionHandler implements Runnable {
 	private ServerSocket socket;
 	private InetSocketAddress address;
 
-	private Set<IncomingConnectionListener> listeners;
+	private Set<CommunicationListener> listeners;
 	private ExecutorService executor;
 	private Thread thread;
 	private boolean stop;
@@ -139,7 +139,7 @@ public class ConnectionHandler implements Runnable {
 			throw new IOException("No available port for the BitTorrent client!");
 		}
 
-		this.listeners = new HashSet<IncomingConnectionListener>();
+		this.listeners = new HashSet<CommunicationListener>();
 		this.executor = null;
 		this.thread = null;
 	}
@@ -157,7 +157,7 @@ public class ConnectionHandler implements Runnable {
 	 * @param listener The listener who wants to receive connection
 	 * notifications.
 	 */
-	public void register(IncomingConnectionListener listener) {
+	public void register(CommunicationListener listener) {
 		this.listeners.add(listener);
 	}
 
@@ -275,7 +275,7 @@ public class ConnectionHandler implements Runnable {
 	 *
 	 * <p>
 	 * If everything goes according to plan, notify the
-	 * <code>IncomingConnectionListener</code>s with the connected socket and
+	 * <code>CommunicationListener</code>s with the connected socket and
 	 * the parsed peer ID.
 	 * </p>
 	 */
@@ -394,13 +394,13 @@ public class ConnectionHandler implements Runnable {
 	 * @param peerId The peer ID of the connected peer.
 	 */
 	private void fireNewPeerConnection(Socket socket, byte[] peerId) {
-		for (IncomingConnectionListener listener : this.listeners) {
+		for (CommunicationListener listener : this.listeners) {
 			listener.handleNewPeerConnection(socket, peerId, "");
 		}
 	}
 
 	private void fireFailedConnection(SharingPeer peer, Throwable cause) {
-		for (IncomingConnectionListener listener : this.listeners) {
+		for (CommunicationListener listener : this.listeners) {
 			listener.handleFailedConnection(peer, cause);
 		}
 	}
