@@ -207,30 +207,26 @@ public class Tracker {
 	}
 
 	/**
-	 * Stop announcing the given torrent.
-	 *
-	 * @param torrent The Torrent object to stop tracking.
+   * Stop announcing the torrent with given hash.
+   * @param info_hash torrent hash
 	 */
-	public synchronized void remove(Torrent torrent) {
-		if (torrent == null) {
-			return;
-		}
-
-		this.torrents.remove(torrent.getHexInfoHash());
-	}
+	public synchronized boolean remove(byte[] info_hash) {
+    return info_hash != null &&
+           this.torrents.remove(Torrent.byteArrayToHexString(info_hash)) != null;
+  }
 
 	/**
 	 * Stop announcing the given torrent after a delay.
 	 *
-	 * @param torrent The Torrent object to stop tracking.
+   * @param info_hash torrent hash
 	 * @param delay The delay, in milliseconds, before removing the torrent.
 	 */
-	public synchronized void remove(Torrent torrent, long delay) {
-		if (torrent == null) {
+	public synchronized void remove(byte[] info_hash, long delay) {
+		if (info_hash == null) {
 			return;
 		}
 
-		new Timer().schedule(new TorrentRemoveTimer(this, torrent), delay);
+		new Timer().schedule(new TorrentRemoveTimer(this, info_hash), delay);
 	}
 
   /**
@@ -252,16 +248,16 @@ public class Tracker {
 	private static class TorrentRemoveTimer extends TimerTask {
 
 		private Tracker tracker;
-		private Torrent torrent;
+		private byte[] info_hash;
 
-		TorrentRemoveTimer(Tracker tracker, Torrent torrent) {
+		TorrentRemoveTimer(Tracker tracker, byte[] info_hash) {
 			this.tracker = tracker;
-			this.torrent = torrent;
+			this.info_hash = info_hash;
 		}
 
 		@Override
 		public void run() {
-			this.tracker.remove(torrent);
+			this.tracker.remove(this.info_hash);
 		}
 	}
 
