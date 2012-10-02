@@ -79,8 +79,7 @@ public class Torrent implements TorrentHash {
 			this.file = file;
 			this.size = size;
 		}
-	};
-
+	}
 
 	protected final byte[] encoded;
 	protected final byte[] encoded_info;
@@ -646,12 +645,16 @@ public class Torrent implements TorrentHash {
 
 	private static String hashFiles(List<File> files)
 		throws NoSuchAlgorithmException, InterruptedException, IOException {
-		ExecutorService executor = Executors.newFixedThreadPool(
-			getHashingThreadsCount());
 		List<Future<String>> results = new LinkedList<Future<String>>();
 		long length = 0L;
 
 		ByteBuffer buffer = ByteBuffer.allocate(Torrent.PIECE_LENGTH);
+
+    int numConcurrentThreads = getHashingThreadsCount();
+
+    ExecutorService executor = Executors.newFixedThreadPool(numConcurrentThreads);
+
+    StringBuilder hashes = new StringBuilder();
 
 		long start = System.nanoTime();
 		for (File file : files) {
@@ -663,15 +666,23 @@ public class Torrent implements TorrentHash {
 			FileInputStream fis = new FileInputStream(file);
 			FileChannel channel = fis.getChannel();
 
-			while (channel.read(buffer) > 0) {
-				if (buffer.remaining() == 0) {
-					buffer.clear();
-					results.add(executor.submit(new CallableChunkHasher(buffer)));
-				}
-			}
+      try {
+        while (channel.read(buffer) > 0) {
+          if (buffer.remaining() == 0) {
+            buffer.clear();
+            results.add(executor.submit(new CallableChunkHasher(buffer)));
+          }
 
-			channel.close();
-			fis.close();
+          if (results.size() >= numConcurrentThreads) {
+            // process hashers, otherwise they will spend too much memory
+            calculateHashes(results, hashes);
+            results.clear();
+          }
+        }
+      } finally {
+        channel.close();
+  			fis.close();
+      }
 		}
 
 		// Hash the last bit, if any
@@ -681,6 +692,8 @@ public class Torrent implements TorrentHash {
 			results.add(executor.submit(new CallableChunkHasher(buffer)));
 		}
 
+    calculateHashes(results, hashes);
+
 		// Request orderly executor shutdown and wait for hashing tasks to
 		// complete.
 		executor.shutdown();
@@ -689,16 +702,7 @@ public class Torrent implements TorrentHash {
 		}
 		long elapsed = System.nanoTime() - start;
 
-		StringBuilder hashes = new StringBuilder();
-		try {
-			for (Future<String> chunk : results) {
-				hashes.append(chunk.get());
-			}
-		} catch (ExecutionException ee) {
-			throw new IOException("Error while hashing the torrent data!", ee);
-		}
-
-		int expectedPieces = (int) (Math.ceil(
+    int expectedPieces = (int) (Math.ceil(
 				(double)length / Torrent.PIECE_LENGTH));
 		logger.info("Hashed {} file(s) ({} bytes) in {} pieces ({} expected) in {}ms.",
 			new Object[] {
@@ -712,7 +716,42 @@ public class Torrent implements TorrentHash {
 		return hashes.toString();
 	}
 
-	/**
+  private static void calculateHashes(List<Future<String>> results, StringBuilder hashes) throws InterruptedException, IOException {
+    try {
+      for (Future<String> chunk : results) {
+        hashes.append(chunk.get());
+      }
+    } catch (ExecutionException ee) {
+      throw new IOException("Error while hashing the torrent data!", ee);
+    }
+  }
+
+  /**
+   * Sets max number of threads to use when hash for file is calculated.
+   * @param hashingThreadsCount number of concurrent threads for file hash calculation
+   */
+  public static void setHashingThreadsCount(int hashingThreadsCount) {
+    Torrent.hashingThreadsCount = hashingThreadsCount;
+  }
+
+  private static int hashingThreadsCount = Runtime.getRuntime().availableProcessors();
+
+  static {
+    String threads = System.getenv("TTORRENT_HASHING_THREADS");
+
+    if (threads != null) {
+      try {
+        int count = Integer.parseInt(threads);
+        if (count > 0) {
+          hashingThreadsCount = count;
+        }
+      } catch (NumberFormatException nfe) {
+        // Pass
+      }
+    }
+  }
+
+  /**
 	 * Torrent reader and creator.
 	 *
 	 * <p>
