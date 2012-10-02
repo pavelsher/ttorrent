@@ -17,8 +17,19 @@ package com.turn.ttorrent.tracker;
 
 import com.turn.ttorrent.bcodec.BEValue;
 import com.turn.ttorrent.bcodec.BEncoder;
-import com.turn.ttorrent.common.protocol.TrackerMessage.*;
-import com.turn.ttorrent.common.protocol.http.*;
+import com.turn.ttorrent.common.Torrent;
+import com.turn.ttorrent.common.protocol.TrackerMessage.AnnounceRequestMessage;
+import com.turn.ttorrent.common.protocol.TrackerMessage.ErrorMessage;
+import com.turn.ttorrent.common.protocol.TrackerMessage.MessageValidationException;
+import com.turn.ttorrent.common.protocol.http.HTTPAnnounceRequestMessage;
+import com.turn.ttorrent.common.protocol.http.HTTPAnnounceResponseMessage;
+import com.turn.ttorrent.common.protocol.http.HTTPTrackerErrorMessage;
+import org.simpleframework.http.Request;
+import org.simpleframework.http.Response;
+import org.simpleframework.http.Status;
+import org.simpleframework.http.core.Container;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -30,14 +41,6 @@ import java.nio.channels.WritableByteChannel;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentMap;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import org.simpleframework.http.Request;
-import org.simpleframework.http.Response;
-import org.simpleframework.http.Status;
-import org.simpleframework.http.core.Container;
 
 
 /**
@@ -75,9 +78,10 @@ public class TrackerService implements Container {
 
 	private final String version;
 	private final ConcurrentMap<String, TrackedTorrent> torrents;
+  private boolean acceptForeignTorrents;
 
 
-	/**
+  /**
 	 * Create a new TrackerService serving the given torrents.
 	 *
 	 * @param torrents The torrents this TrackerService should serve requests
@@ -127,6 +131,8 @@ public class TrackerService implements Container {
 		}
 	}
 
+
+
 	/**
 	 * Process the announce request.
 	 *
@@ -166,6 +172,11 @@ public class TrackerService implements Container {
 		// The requested torrent must be announced by the tracker.
 		TrackedTorrent torrent = this.torrents.get(
 			announceRequest.getHexInfoHash());
+
+    if (torrent == null && this.acceptForeignTorrents) {
+      torrent = new TrackedTorrent(announceRequest.getInfoHash());
+    }
+
 		if (torrent == null) {
 			logger.warn("Requested torrent hash was: {}",
 				announceRequest.getHexInfoHash());
@@ -279,7 +290,7 @@ public class TrackerService implements Container {
 		if (params.get("ip") == null) {
 			params.put("ip", new BEValue(
 				request.getClientAddress().getAddress().getHostAddress(),
-				TrackedTorrent.BYTE_ENCODING));
+				Torrent.BYTE_ENCODING));
 		}
 
 
@@ -289,7 +300,7 @@ public class TrackerService implements Container {
 	private void recordParam(Map<String, BEValue> params, String key,
 		String value) {
 		try {
-			value = URLDecoder.decode(value, TrackedTorrent.BYTE_ENCODING);
+			value = URLDecoder.decode(value, Torrent.BYTE_ENCODING);
 
 			for (String f : NUMERIC_REQUEST_FIELDS) {
 				if (f.equals(key)) {
@@ -298,7 +309,7 @@ public class TrackerService implements Container {
 				}
 			}
 
-			params.put(key, new BEValue(value, TrackedTorrent.BYTE_ENCODING));
+			params.put(key, new BEValue(value, Torrent.BYTE_ENCODING));
 		} catch (UnsupportedEncodingException uee) {
 			// Ignore, act like parameter was not there
 			return;
@@ -356,4 +367,8 @@ public class TrackerService implements Container {
 		Status status, ErrorMessage.FailureReason reason) throws IOException {
 		this.serveError(response, body, status, reason.getMessage());
 	}
+
+  public void setAcceptForeignTorrents(boolean acceptForeignTorrents) {
+    this.acceptForeignTorrents = acceptForeignTorrents;
+  }
 }

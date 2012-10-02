@@ -16,6 +16,14 @@
 package com.turn.ttorrent.tracker;
 
 import com.turn.ttorrent.common.Torrent;
+import jargs.gnu.CmdLineParser;
+import org.apache.log4j.BasicConfigurator;
+import org.apache.log4j.ConsoleAppender;
+import org.apache.log4j.PatternLayout;
+import org.simpleframework.transport.connect.Connection;
+import org.simpleframework.transport.connect.SocketConnection;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.FilenameFilter;
@@ -29,18 +37,6 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-
-import jargs.gnu.CmdLineParser;
-
-import org.apache.log4j.BasicConfigurator;
-import org.apache.log4j.ConsoleAppender;
-import org.apache.log4j.PatternLayout;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import org.simpleframework.transport.connect.Connection;
-import org.simpleframework.transport.connect.SocketConnection;
 
 /**
  * BitTorrent tracker.
@@ -78,7 +74,9 @@ public class Tracker {
 	private Thread collector;
 	private boolean stop;
 
-	/**
+  private final TrackerService trackerService;
+
+  /**
 	 * Create a new BitTorrent tracker listening at the given address on the
 	 * default port.
 	 *
@@ -115,8 +113,8 @@ public class Tracker {
 		this.address = address;
 
 		this.torrents = new ConcurrentHashMap<String, TrackedTorrent>();
-		this.connection = new SocketConnection(
-				new TrackerService(version, this.torrents));
+    this.trackerService = new TrackerService(version, this.torrents);
+    this.connection = new SocketConnection(trackerService);
 	}
 
 	/**
@@ -199,14 +197,12 @@ public class Tracker {
 		TrackedTorrent existing = this.torrents.get(torrent.getHexInfoHash());
 
 		if (existing != null) {
-			logger.warn("Tracker already announced torrent for '{}' " +
-				"with hash {}.", existing.getName(), existing.getHexInfoHash());
+			logger.warn("Tracker already announced torrent with hash {}.", existing.getHexInfoHash());
 			return existing;
 		}
 
 		this.torrents.put(torrent.getHexInfoHash(), torrent);
-		logger.info("Registered new torrent for '{}' with hash {}.",
-			torrent.getName(), torrent.getHexInfoHash());
+		logger.info("Registered new torrent with hash {}.", torrent.getHexInfoHash());
 		return torrent;
 	}
 
@@ -237,7 +233,15 @@ public class Tracker {
 		new Timer().schedule(new TorrentRemoveTimer(this, torrent), delay);
 	}
 
-	/**
+  /**
+   * Set to true to allow this tracker to track external torrents (i.e. those that were not explicitly announced here).
+   * @param acceptForeignTorrents true to accept foreign torrents (false otherwise)
+   */
+  public void setAcceptForeignTorrents(boolean acceptForeignTorrents) {
+    this.trackerService.setAcceptForeignTorrents(acceptForeignTorrents);
+  }
+
+  /**
 	 * Timer task for removing a torrent from a tracker.
 	 *
 	 * <p>

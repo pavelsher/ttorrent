@@ -17,14 +17,15 @@ package com.turn.ttorrent.tracker;
 
 import com.turn.ttorrent.common.Peer;
 import com.turn.ttorrent.common.Torrent;
+import com.turn.ttorrent.common.TorrentHash;
 import com.turn.ttorrent.common.protocol.TrackerMessage.AnnounceRequestMessage.RequestEvent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
-
 import java.security.NoSuchAlgorithmException;
 import java.util.Collections;
 import java.util.LinkedList;
@@ -32,9 +33,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 
 /**
@@ -51,7 +49,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author mpetazzoni
  */
-public class TrackedTorrent extends Torrent {
+public class TrackedTorrent implements TorrentHash {
 
 	private static final Logger logger =
 		LoggerFactory.getLogger(TrackedTorrent.class);
@@ -68,21 +66,20 @@ public class TrackedTorrent extends Torrent {
 	private int answerPeers;
 	private int announceInterval;
 
+  private final byte[] info_hash;
+
 	/** Peers currently exchanging on this torrent. */
 	private ConcurrentMap<String, TrackedPeer> peers;
 
 	/**
 	 * Create a new tracked torrent from meta-info binary data.
 	 *
-	 * @param torrent The meta-info byte data.
-	 * @throws IOException When the info dictionary can't be
+	 * @param info_hash The meta-info byte data.
 	 * encoded and hashed back to create the torrent's SHA-1 hash.
-	 * @throws NoSuchAlgorithmException If the SHA-1 algorithm is not
 	 * available.
 	 */
-	public TrackedTorrent(byte[] torrent)
-		throws IOException, NoSuchAlgorithmException {
-		super(torrent, null, false);
+	public TrackedTorrent(byte[] info_hash) {
+		this.info_hash = info_hash;
 
 		this.peers = new ConcurrentHashMap<String, TrackedPeer>();
 		this.answerPeers = TrackedTorrent.DEFAULT_ANSWER_NUM_PEERS;
@@ -297,16 +294,18 @@ public class TrackedTorrent extends Torrent {
 	 */
 	public static TrackedTorrent load(File torrent) throws IOException,
 		NoSuchAlgorithmException {
-		FileInputStream fis = null;
-		try {
-			fis = new FileInputStream(torrent);
-			byte[] data = new byte[(int)torrent.length()];
-			fis.read(data);
-			return new TrackedTorrent(data);
-		} finally {
-			if (fis != null) {
-				fis.close();
-			}
-		}
+
+    Torrent t = Torrent.load(torrent, null);
+    return new TrackedTorrent(t.getInfoHash());
 	}
+
+  @Override
+  public byte[] getInfoHash() {
+    return this.info_hash;
+  }
+
+  @Override
+  public String getHexInfoHash() {
+    return Torrent.byteArrayToHexString(this.info_hash);
+  }
 }
