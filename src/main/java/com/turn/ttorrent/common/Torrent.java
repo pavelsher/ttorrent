@@ -439,20 +439,7 @@ public class Torrent implements TorrentHash {
 	 * @return How many threads to use for concurrent piece hashing.
 	 */
 	protected static int getHashingThreadsCount() {
-		String threads = System.getenv("TTORRENT_HASHING_THREADS");
-
-		if (threads != null) {
-			try {
-				int count = Integer.parseInt(threads);
-				if (count > 0) {
-					return count;
-				}
-			} catch (NumberFormatException nfe) {
-				// Pass
-			}
-		}
-
-		return Runtime.getRuntime().availableProcessors();
+    return hashingThreadsCount;
 	}
 
 	/** Torrent loading ---------------------------------------------------- */
