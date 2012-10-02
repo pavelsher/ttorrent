@@ -33,6 +33,8 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
@@ -235,6 +237,13 @@ public class Tracker {
    */
   public void setAcceptForeignTorrents(boolean acceptForeignTorrents) {
     this.trackerService.setAcceptForeignTorrents(acceptForeignTorrents);
+  }
+
+  /**
+   * @return all tracked torrents.
+   */
+  public Collection<TrackedTorrent> getTrackedTorrents() {
+    return Collections.unmodifiableCollection(this.torrents.values());
   }
 
   /**
