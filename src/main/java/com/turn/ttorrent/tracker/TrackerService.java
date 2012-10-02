@@ -175,6 +175,7 @@ public class TrackerService implements Container {
 
     if (torrent == null && this.acceptForeignTorrents) {
       torrent = new TrackedTorrent(announceRequest.getInfoHash());
+      this.torrents.put(torrent.getHexInfoHash(), torrent);
     }
 
 		if (torrent == null) {
