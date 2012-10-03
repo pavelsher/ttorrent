@@ -1,17 +1,17 @@
 package com.turn.ttorrent.test;
 
-import java.io.File;
-import java.io.IOException;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.security.NoSuchAlgorithmException;
-
 import com.turn.ttorrent.client.Client;
 import com.turn.ttorrent.client.ClientSharedTorrent;
 import com.turn.ttorrent.client.MultiTorrentClient;
 import com.turn.ttorrent.client.SharedTorrent;
 import com.turn.ttorrent.tracker.TrackedTorrent;
 import com.turn.ttorrent.tracker.Tracker;
+
+import java.io.File;
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.security.NoSuchAlgorithmException;
 
 
 public class MultiTorrentTest {
@@ -36,33 +36,33 @@ public class MultiTorrentTest {
 		if ("SINGLE".equals(CLIENT_TYPE)) {
 			SharedTorrent torrent1 = SharedTorrent.fromFile(
 					new File(ROOT_FILE_DIR + "file1.torrent"), 
-					new File(ROOT_FILE_DIR + "client1"));
+					new File(ROOT_FILE_DIR + "client1"), false);
 			SharedTorrent torrent2 = SharedTorrent.fromFile(
 					new File(ROOT_FILE_DIR + "file2.torrent"), 
-					new File(ROOT_FILE_DIR + "client1"));
+					new File(ROOT_FILE_DIR + "client1"), false);
 			SharedTorrent torrent3 = SharedTorrent.fromFile(
 					new File(ROOT_FILE_DIR + "file3.torrent"), 
-					new File(ROOT_FILE_DIR + "client1"));
+					new File(ROOT_FILE_DIR + "client1"), false);
 			
 			SharedTorrent torrent1_2 = SharedTorrent.fromFile(
 					new File(ROOT_FILE_DIR + "file1.torrent"), 
-					new File(ROOT_FILE_DIR + "client2"));
+					new File(ROOT_FILE_DIR + "client2"), false);
 			SharedTorrent torrent2_2 = SharedTorrent.fromFile(
 					new File(ROOT_FILE_DIR + "file2.torrent"), 
-					new File(ROOT_FILE_DIR + "client2"));
+					new File(ROOT_FILE_DIR + "client2"), false);
 			SharedTorrent torrent3_2 = SharedTorrent.fromFile(
 					new File(ROOT_FILE_DIR + "file3.torrent"), 
-					new File(ROOT_FILE_DIR + "client2"));
+					new File(ROOT_FILE_DIR + "client2"), false);
 			
 			SharedTorrent torrent1_3 = SharedTorrent.fromFile(
 					new File(ROOT_FILE_DIR + "file3.torrent"), 
-					new File(ROOT_FILE_DIR + "client3"));
+					new File(ROOT_FILE_DIR + "client3"), false);
 			SharedTorrent torrent2_3 = SharedTorrent.fromFile(
 					new File(ROOT_FILE_DIR + "file3.torrent"), 
-					new File(ROOT_FILE_DIR + "client3"));
+					new File(ROOT_FILE_DIR + "client3"), false);
 			SharedTorrent torrent3_3 = SharedTorrent.fromFile(
 					new File(ROOT_FILE_DIR + "file3.torrent"), 
-					new File(ROOT_FILE_DIR + "client3"));
+					new File(ROOT_FILE_DIR + "client3"), false);
 			
 			Client client1 = new Client(InetAddress.getLocalHost(), torrent1);
 			client1.share();
@@ -94,13 +94,13 @@ public class MultiTorrentTest {
 		} else {
 			ClientSharedTorrent torrent1 = ClientSharedTorrent.fromFile(
 					new File(ROOT_FILE_DIR + "file1.torrent"), 
-					new File(ROOT_FILE_DIR + "client1"));
+					new File(ROOT_FILE_DIR + "client1"), false);
 			ClientSharedTorrent torrent2 = ClientSharedTorrent.fromFile(
 					new File(ROOT_FILE_DIR + "file2.torrent"), 
-					new File(ROOT_FILE_DIR + "client1"));
+					new File(ROOT_FILE_DIR + "client1"), false);
 			ClientSharedTorrent torrent3 = ClientSharedTorrent.fromFile(
 					new File(ROOT_FILE_DIR + "file3.torrent"), 
-					new File(ROOT_FILE_DIR + "client1"));
+					new File(ROOT_FILE_DIR + "client1"), false);
 			/*
 			ClientSharedTorrent torrent1_2 = ClientSharedTorrent.fromFile(
 					new File(ROOT_FILE_DIR + "file1.torrent"), 

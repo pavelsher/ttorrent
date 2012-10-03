@@ -34,16 +34,8 @@ public class ClientSharedTorrent extends SharedTorrent {
 	private Random random;
 	private long seed;
 	private boolean stop;
-	
-	public ClientSharedTorrent(Torrent torrent, File destDir, boolean multiThreadHash)
-			throws FileNotFoundException, IOException, NoSuchAlgorithmException {
-		super(torrent, destDir, multiThreadHash);
-		this.peers = new ConcurrentHashMap<String, SharingPeer>();
-		this.connected = new ConcurrentHashMap<String, SharingPeer>();
-		this.random = new Random(System.currentTimeMillis());
-	}
 
-	public ClientSharedTorrent(byte[] torrent, File destDir, boolean multiThreadHash)
+    public ClientSharedTorrent(byte[] torrent, File destDir, boolean multiThreadHash)
 			throws FileNotFoundException, IOException, NoSuchAlgorithmException {
 		super(torrent, destDir, multiThreadHash);
 		this.peers = new ConcurrentHashMap<String, SharingPeer>();
