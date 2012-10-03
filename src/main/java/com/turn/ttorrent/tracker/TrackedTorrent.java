@@ -87,7 +87,7 @@ public class TrackedTorrent implements TorrentHash {
 
 	public TrackedTorrent(Torrent torrent)
 		throws IOException, NoSuchAlgorithmException {
-		this(torrent.getEncoded());
+		this(torrent.getInfoHash());
 	}
 
 	/**
