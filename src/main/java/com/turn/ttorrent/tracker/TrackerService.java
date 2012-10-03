@@ -238,7 +238,8 @@ public class TrackerService implements Container {
 				this.version,
 				torrent.seeders(),
 				torrent.leechers(),
-				torrent.getSomePeers(peer));
+				torrent.getSomePeers(peer),
+				torrent.getHexInfoHash());
 			WritableByteChannel channel = Channels.newChannel(body);
 			channel.write(announceResponse.getData());
 		} catch (Exception e) {

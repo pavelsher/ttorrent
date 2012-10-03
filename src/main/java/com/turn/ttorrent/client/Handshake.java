@@ -35,6 +35,8 @@ public class Handshake {
 	ByteBuffer data;
 	ByteBuffer infoHash;
 	ByteBuffer peerId;
+	
+	String torrentIdentifier;
 
 	private Handshake(ByteBuffer data, ByteBuffer infoHash,
 			ByteBuffer peerId) {
@@ -84,6 +86,12 @@ public class Handshake {
 		return new Handshake(buffer, ByteBuffer.wrap(infoHash),
 				ByteBuffer.wrap(peerId));
 	}
+	
+	public static Handshake parse(ByteBuffer buffer, String torrentIdentifier) throws UnsupportedEncodingException, ParseException {
+		Handshake hs = Handshake.parse(buffer);
+		hs.setTorrentIdentifier(torrentIdentifier);
+		return hs;
+	}
 
 	public static Handshake craft(byte[] torrentInfoHash,
 			byte[] clientPeerId) {
@@ -108,5 +116,15 @@ public class Handshake {
 		} catch (UnsupportedEncodingException uee) {
 			return null;
 		}
+	}
+	
+	public static Handshake parse(byte[] torrentInfoHash, byte[] clientPeerId, String torrentIdentifier) throws UnsupportedEncodingException, ParseException {
+		Handshake hs = Handshake.craft(torrentInfoHash, clientPeerId);
+		hs.setTorrentIdentifier(torrentIdentifier);
+		return hs;
+	}
+	
+	public void setTorrentIdentifier(String torrentIdentifier) {
+		this.torrentIdentifier = torrentIdentifier;
 	}
 }

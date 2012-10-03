@@ -15,14 +15,6 @@
  */
 package com.turn.ttorrent.common.protocol.http;
 
-import com.turn.ttorrent.bcodec.BDecoder;
-import com.turn.ttorrent.bcodec.BEValue;
-import com.turn.ttorrent.bcodec.BEncoder;
-import com.turn.ttorrent.bcodec.InvalidBEncodingException;
-import com.turn.ttorrent.common.Peer;
-import com.turn.ttorrent.common.Torrent;
-import com.turn.ttorrent.common.protocol.TrackerMessage.AnnounceResponseMessage;
-
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
@@ -33,6 +25,14 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+
+import com.turn.ttorrent.bcodec.BDecoder;
+import com.turn.ttorrent.bcodec.BEValue;
+import com.turn.ttorrent.bcodec.BEncoder;
+import com.turn.ttorrent.bcodec.InvalidBEncodingException;
+import com.turn.ttorrent.common.Peer;
+import com.turn.ttorrent.common.Torrent;
+import com.turn.ttorrent.common.protocol.TrackerMessage.AnnounceResponseMessage;
 
 
 /**
@@ -47,6 +47,7 @@ public class HTTPAnnounceResponseMessage extends HTTPTrackerMessage
 	private final int complete;
 	private final int incomplete;
 	private final List<Peer> peers;
+	private String hexInfoHash;
 
 	private HTTPAnnounceResponseMessage(ByteBuffer data,
 		int interval, int complete, int incomplete, List<Peer> peers) {
@@ -55,6 +56,12 @@ public class HTTPAnnounceResponseMessage extends HTTPTrackerMessage
 		this.complete = complete;
 		this.incomplete = incomplete;
 		this.peers = peers;
+	}
+	
+	private HTTPAnnounceResponseMessage(ByteBuffer data,
+		int interval, int complete, int incomplete, List<Peer> peers, String hexInfoHash) {
+		this(data, interval, complete, incomplete, peers);
+		this.hexInfoHash = hexInfoHash;
 	}
 
 	@Override
@@ -75,6 +82,10 @@ public class HTTPAnnounceResponseMessage extends HTTPTrackerMessage
 	@Override
 	public List<Peer> getPeers() {
 		return this.peers;
+	}
+	
+	public String getHexInfoHash() {
+		return this.hexInfoHash;
 	}
 
 	public static HTTPAnnounceResponseMessage parse(ByteBuffer data)
@@ -100,11 +111,19 @@ public class HTTPAnnounceResponseMessage extends HTTPTrackerMessage
 				peers = toPeerList(params.get("peers").getList());
 			}
 
-			return new HTTPAnnounceResponseMessage(data,
-				params.get("interval").getInt(),
-				params.get("complete").getInt(),
-				params.get("incomplete").getInt(),
-				peers);
+			if (params.get("torrentIdentifier") != null) {
+				return new HTTPAnnounceResponseMessage(data,
+					params.get("interval").getInt(),
+					params.get("complete").getInt(),
+					params.get("incomplete").getInt(),
+					peers, params.get("torrentIdentifier").getString());
+			} else {
+				return new HTTPAnnounceResponseMessage(data,
+					params.get("interval").getInt(),
+					params.get("complete").getInt(),
+					params.get("incomplete").getInt(),
+					peers);
+			}
 		} catch (InvalidBEncodingException ibee) {
 			throw new MessageValidationException("Invalid response " +
 				"from tracker!", ibee);
@@ -201,5 +220,40 @@ public class HTTPAnnounceResponseMessage extends HTTPTrackerMessage
 		return new HTTPAnnounceResponseMessage(
 			BEncoder.bencode(response),
 			interval, complete, incomplete, peers);
+	}
+	
+	/**
+	 * Craft a compact announce response message with a torrent identifier.
+	 *
+	 * @param interval
+	 * @param minInterval
+	 * @param trackerId
+	 * @param complete
+	 * @param incomplete
+	 * @param peers
+	 */
+	public static HTTPAnnounceResponseMessage craft(int interval,
+		int minInterval, String trackerId, int complete, int incomplete,
+		List<Peer> peers, String hexInfoHash) throws IOException, UnsupportedEncodingException {
+		Map<String, BEValue> response = new HashMap<String, BEValue>();
+		response.put("interval", new BEValue(interval));
+		response.put("complete", new BEValue(complete));
+		response.put("incomplete", new BEValue(incomplete));
+		response.put("torrentIdentifier", new BEValue(hexInfoHash));
+
+		ByteBuffer data = ByteBuffer.allocate(peers.size() * 6);
+		for (Peer peer : peers) {
+			byte[] ip = peer.getRawIp();
+			if (ip == null || ip.length != 4) {
+				continue;
+			}
+			data.put(ip);
+			data.putShort((short)peer.getPort());
+		}
+		response.put("peers", new BEValue(data.array()));
+
+		return new HTTPAnnounceResponseMessage(
+			BEncoder.bencode(response),
+			interval, complete, incomplete, peers, hexInfoHash);
 	}
 }

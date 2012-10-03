@@ -24,6 +24,7 @@ import org.apache.log4j.PatternLayout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
 import java.io.*;
 import java.math.BigInteger;
 import java.net.URI;
@@ -52,7 +53,7 @@ import java.util.concurrent.*;
  * @author mpetazzoni
  * @see <a href="http://wiki.theory.org/BitTorrentSpecification#Metainfo_File_Structure">Torrent meta-info file structure specification</a>
  */
-public class Torrent implements TorrentHash {
+public class Torrent extends Observable implements TorrentHash {
 
 	private static final Logger logger =
 		LoggerFactory.getLogger(Torrent.class);
@@ -787,6 +788,7 @@ public class Torrent implements TorrentHash {
 			Torrent torrent = null;
 			if (source.isDirectory()) {
 				File[] files = source.listFiles();
+                assert files != null;
 				Arrays.sort(files);
 				torrent = Torrent.create(source, Arrays.asList(files),
 					announce, creator);

@@ -44,5 +44,5 @@ public interface AnnounceResponseListener extends EventListener {
 	 * @param peers The list of peers discovered (from the announce response or
 	 * any other means like DHT/PEX, etc.).
 	 */
-	public void handleDiscoveredPeers(List<Peer> peers);
+	public void handleDiscoveredPeers(List<Peer> peers, String hexInfoHash);
 }

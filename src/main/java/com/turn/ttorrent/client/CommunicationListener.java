@@ -15,20 +15,28 @@
  */
 package com.turn.ttorrent.client;
 
+import java.net.Socket;
+import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
+import java.util.EventListener;
+import java.util.List;
+
 import com.turn.ttorrent.client.peer.SharingPeer;
 
-import java.net.Socket;
-import java.util.EventListener;
-
 /**
- * EventListener interface for objects that want to handle incoming peer
- * connections.
+ * EventListener interface for objects that want to handle socket communications.
  *
  * @author mpetazzoni
  */
-public interface IncomingConnectionListener extends EventListener {
-
-	public void handleNewPeerConnection(Socket s, byte[] peerId);
+public interface CommunicationListener extends EventListener {
+	
+	public void handleNewConnection(SocketChannel s, String hexInfoHash);
+	
+	public void handleReturnedHandshake(SocketChannel s, List<ByteBuffer> data);
+	
+	public void handleNewData(SocketChannel s, List<ByteBuffer> data);
 
 	public void handleFailedConnection(SharingPeer peer, Throwable cause);
+	
+	public void handleNewPeerConnection(Socket s, byte[] peerId, String torrentIdentifier);
 }

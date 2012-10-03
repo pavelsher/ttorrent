@@ -15,31 +15,32 @@
  */
 package com.turn.ttorrent.client.announce;
 
-import com.turn.ttorrent.client.SharedTorrent;
-import com.turn.ttorrent.common.Peer;
-import com.turn.ttorrent.common.protocol.TrackerMessage;
-import com.turn.ttorrent.common.protocol.TrackerMessage.*;
-
 import java.net.URI;
-
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-public abstract class TrackerClient {
+import com.turn.ttorrent.client.ClientSharedTorrent;
+import com.turn.ttorrent.common.Peer;
+import com.turn.ttorrent.common.protocol.TrackerMessage;
+import com.turn.ttorrent.common.protocol.TrackerMessage.AnnounceRequestMessage;
+import com.turn.ttorrent.common.protocol.TrackerMessage.AnnounceResponseMessage;
+import com.turn.ttorrent.common.protocol.TrackerMessage.ErrorMessage;
+
+public abstract class MultiTorrentTrackerClient {
 
 	/** The set of listeners to announce request answers. */
 	private final Set<AnnounceResponseListener> listeners;
 
-	protected final SharedTorrent torrent;
+	protected final List<ClientSharedTorrent> torrents;
 	protected final Peer peer;
-	protected final URI tracker;
+	protected URI tracker;
 
-	public TrackerClient(SharedTorrent torrent, Peer peer, URI tracker) {
+	public MultiTorrentTrackerClient(Peer peer) {
 		this.listeners = new HashSet<AnnounceResponseListener>();
-		this.torrent = torrent;
 		this.peer = peer;
-		this.tracker = tracker;
+		this.torrents = new ArrayList<ClientSharedTorrent>();
 	}
 
 	/**
@@ -56,6 +57,10 @@ public abstract class TrackerClient {
 	 */
 	public URI getTrackerURI() {
 		return this.tracker;
+	}
+	
+	public void setTrackerURI(URI tracker) {
+		this.tracker = tracker;
 	}
 
 	/**
@@ -89,6 +94,10 @@ public abstract class TrackerClient {
 	 */
 	protected void close() {
 		// Do nothing by default, but can be overloaded.
+	}
+	
+	protected void addTorrent(ClientSharedTorrent torrent) {
+		this.torrents.add(torrent);
 	}
 
 	/**
@@ -137,7 +146,7 @@ public abstract class TrackerClient {
 			response.getIncomplete(),
 			response.getInterval());
 		this.fireDiscoveredPeersEvent(
-			response.getPeers());
+			response.getPeers(), response.getHexInfoHash());
 	}
 
 	/**
@@ -159,9 +168,9 @@ public abstract class TrackerClient {
 	 *
 	 * @param peers The list of peers discovered.
 	 */
-	protected void fireDiscoveredPeersEvent(List<Peer> peers) {
+	protected void fireDiscoveredPeersEvent(List<Peer> peers, String hexInfoHash) {
 		for (AnnounceResponseListener listener : this.listeners) {
-			listener.handleDiscoveredPeers(peers, "");
+			listener.handleDiscoveredPeers(peers, hexInfoHash);
 		}
 	}
 }

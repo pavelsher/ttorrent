@@ -15,15 +15,12 @@
  */
 package com.turn.ttorrent.client.peer;
 
-import com.turn.ttorrent.common.Peer;
-import com.turn.ttorrent.common.protocol.PeerMessage;
-import com.turn.ttorrent.client.Piece;
-import com.turn.ttorrent.client.SharedTorrent;
-
 import java.io.IOException;
 import java.net.Socket;
 import java.net.SocketException;
 import java.nio.ByteBuffer;
+import java.nio.channels.ClosedChannelException;
+import java.nio.channels.SocketChannel;
 import java.util.BitSet;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -33,6 +30,11 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.turn.ttorrent.client.Piece;
+import com.turn.ttorrent.client.SharedTorrent;
+import com.turn.ttorrent.common.Peer;
+import com.turn.ttorrent.common.protocol.PeerMessage;
 
 
 /**
@@ -86,10 +88,12 @@ public class SharingPeer extends Peer implements MessageListener {
 	private int lastRequestedOffset;
 	private BlockingQueue<PeerMessage.RequestMessage> requests;
 
-	private PeerExchange exchange;
+	private PeerExchange exchange = null;
 	private Object exchangeLock;
 	private Rate download;
 	private Rate upload;
+	private boolean bound;
+	private SocketChannel socketChannel;
 
 	private Set<PeerActivityListener> listeners;
 
@@ -112,6 +116,7 @@ public class SharingPeer extends Peer implements MessageListener {
 
 		this.reset();
 		this.requestedPiece = null;
+		this.bound = false;
 	}
 
 	/**
@@ -247,7 +252,7 @@ public class SharingPeer extends Peer implements MessageListener {
 			this.getAvailablePieces().cardinality() ==
 				this.torrent.getPieceCount();
 	}
-
+	
 	/**
 	 * Bind a connected socket to this peer.
 	 *
@@ -257,6 +262,7 @@ public class SharingPeer extends Peer implements MessageListener {
 	 * </p>
 	 *
 	 * @param socket The connected socket for this peer.
+	 * @throws ClosedChannelException 
 	 */
 	public synchronized void bind(Socket socket) throws SocketException {
 		this.unbind(true);
@@ -264,9 +270,25 @@ public class SharingPeer extends Peer implements MessageListener {
 		this.exchange = new PeerExchange(this, this.torrent, socket);
 		this.exchange.register(this);
 
+		resetRates();
+	}
+
+	/**
+	 * Bind a socket channel to this peer, to allow it to send and receive messages in a non-blocking way.
+	 *
+	 * @param socket The connected socket for this peer.
+	 * @throws SocketException
+	 * @throws ClosedChannelException 
+	 */
+	public synchronized void bind(SocketChannel socketChannel) throws SocketException, ClosedChannelException {
+		this.exchange.register(this);
+		resetRates();
+	}
+	
+	public synchronized void resetRates() {
 		this.download = new Rate();
 		this.download.reset();
-
+		
 		this.upload = new Rate();
 		this.upload.reset();
 	}
@@ -275,9 +297,16 @@ public class SharingPeer extends Peer implements MessageListener {
 	 * Tells whether this peer as an active connection through a peer exchange.
 	 */
 	public boolean isConnected() {
+		if (this.exchange == null) {
+			return this.bound;
+		}
 		synchronized (this.exchangeLock) {
 			return this.exchange != null && this.exchange.isConnected();
 		}
+	}
+	
+	public void setBound(boolean bound) {
+		this.bound = bound;
 	}
 
 	/**
@@ -326,10 +355,14 @@ public class SharingPeer extends Peer implements MessageListener {
 	 * exchange.
 	 */
 	public void send(PeerMessage message) throws IllegalStateException {
-		synchronized (this.exchangeLock) {
-			if (this.isConnected()) {
-				this.exchange.send(message);
+		if (this.exchange != null) {
+			synchronized (this.exchangeLock) {
+				if (this.isConnected()) {
+					this.exchange.send(message);
+				}
 			}
+		} else {
+			this.fireNewMessage(message);
 		}
 	}
 
@@ -552,7 +585,7 @@ public class SharingPeer extends Peer implements MessageListener {
 					ByteBuffer block = p.read(request.getOffset(),
 									request.getLength());
 					this.send(PeerMessage.PieceMessage.craft(request.getPiece(),
-								request.getOffset(), block));
+							request.getOffset(), block));
 					this.upload.add(block.capacity());
 
 					if (request.getOffset() + request.getLength() == p.size()) {
@@ -701,6 +734,12 @@ public class SharingPeer extends Peer implements MessageListener {
 		}
 	}
 
+	private void fireNewMessage(PeerMessage message) {
+		for (PeerActivityListener listener : this.listeners) {
+			listener.sendPeerMessage(this, message);
+		}
+	}
+
 	/**
 	 * Fire the IOException event to all registered listeners.
 	 *
@@ -761,5 +800,21 @@ public class SharingPeer extends Peer implements MessageListener {
 			.append((this.interesting ? "I" : "i"))
 			.append("]")
 			.toString();
+	}
+	
+	public String getTorrentHexInfoHash() {
+		return this.torrent.getHexInfoHash();
+	}
+	
+	public SharedTorrent getTorrent() {
+		return this.torrent;
+	}
+
+	public SocketChannel getSocketChannel() {
+		return socketChannel;
+	}
+
+	public void setSocketChannel(SocketChannel socketChannel) {
+		this.socketChannel = socketChannel;
 	}
 }

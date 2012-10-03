@@ -34,7 +34,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-
 /**
  * Tracked torrents are torrent for which we don't expect to have data files
  * for.
@@ -66,7 +65,7 @@ public class TrackedTorrent implements TorrentHash {
 	private int answerPeers;
 	private int announceInterval;
 
-  private final byte[] info_hash;
+    private final byte[] info_hash;
 
 	/** Peers currently exchanging on this torrent. */
 	private ConcurrentMap<String, TrackedPeer> peers;
