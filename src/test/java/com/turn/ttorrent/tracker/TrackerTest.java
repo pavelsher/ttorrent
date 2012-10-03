@@ -102,6 +102,36 @@ public class TrackerTest extends TestCase {
     }
   }
 
+  public void tracker_accepts_torrent_from_leech() throws IOException, NoSuchAlgorithmException {
+    this.tracker.setAcceptForeignTorrents(true);
+
+    final File downloadDir = tempFiles.createTempDir();
+    Client leech = createClient("file1.jar.torrent", downloadDir);
+
+    try {
+      leech.download();
+
+      new WaitFor() {
+        @Override
+        protected boolean condition() {
+          return TrackerTest.this.tracker.getTrackedTorrents().size() == 1;
+        }
+      };
+
+      Collection<TrackedTorrent> trackedTorrents = this.tracker.getTrackedTorrents();
+      assertEquals(1, trackedTorrents.size());
+
+      TrackedTorrent trackedTorrent = trackedTorrents.iterator().next();
+      Map<String,TrackedPeer> peers = trackedTorrent.getPeers();
+      assertEquals(1, peers.size());
+      assertFalse(peers.values().iterator().next().isCompleted()); // leech
+      assertEquals(0, trackedTorrent.seeders());
+      assertEquals(1, trackedTorrent.leechers());
+    } finally {
+      leech.stop(true);
+    }
+  }
+
   public void tracker_accepts_torrent_from_seeder_plus_leech() throws IOException, NoSuchAlgorithmException {
     this.tracker.setAcceptForeignTorrents(true);
     assertEquals(0, this.tracker.getTrackedTorrents().size());
@@ -121,6 +151,19 @@ public class TrackerTest extends TestCase {
       leech.stop(true);
     }
   }
+
+/*
+  public void utorrent_test() throws IOException, NoSuchAlgorithmException {
+    this.tracker.setAcceptForeignTorrents(true);
+
+    new WaitFor(3600 * 1000) {
+      @Override
+      protected boolean condition() {
+        return TrackerTest.this.tracker.getTrackedTorrents().size() == 1;
+      }
+    };
+  }
+*/
 
   private void waitForFileInDir(final File downloadDir, final String fileName) {
     new WaitFor() {
