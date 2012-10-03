@@ -1,6 +1,5 @@
-package com.turn.ttorrent;
+package com.turn.ttorrent.common;
 
-import com.turn.ttorrent.common.Torrent;
 import junit.framework.TestCase;
 import org.testng.annotations.Test;
 
