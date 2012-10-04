@@ -258,12 +258,12 @@ public class TrackerTest extends TestCase {
   private Client createClient(String name) throws IOException, NoSuchAlgorithmException {
     File torrentFile = new File(TEST_RESOURCES + "/torrents", name);
     File parentFiles = new File(TEST_RESOURCES + "/parentFiles");
-    return new Client(InetAddress.getLoopbackAddress(), SharedTorrent.fromFile(torrentFile, parentFiles, false));
+    return new Client(InetAddress.getLocalHost(), SharedTorrent.fromFile(torrentFile, parentFiles, false));
   }
 
   private Client createClient(String name, File destDir) throws IOException, NoSuchAlgorithmException {
     File torrentFile = new File(TEST_RESOURCES + "/torrents", name);
-    return new Client(InetAddress.getLoopbackAddress(), SharedTorrent.fromFile(torrentFile, destDir, false));
+    return new Client(InetAddress.getLocalHost(), SharedTorrent.fromFile(torrentFile, destDir, false));
   }
 
   private void stopTracker() {
