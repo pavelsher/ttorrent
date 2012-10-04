@@ -67,7 +67,7 @@ public class MultiTorrentClient implements
 	Thread thread;
 	
 	// List of all torrents this client is currently sharing/downloading
-	private ConcurrentMap<String, ClientSharedTorrent> torrents = new ConcurrentHashMap<String, ClientSharedTorrent>();
+	private final ConcurrentMap<String, ClientSharedTorrent> torrents = new ConcurrentHashMap<String, ClientSharedTorrent>();
   private volatile boolean stopped;
 	
 	public MultiTorrentClient(InetAddress address) 
@@ -394,13 +394,14 @@ public class MultiTorrentClient implements
 	}
 
 	@Override
-	public void handleAnnounceResponse(int interval, int complete,
-			int incomplete) {
+	public void handleAnnounceResponse(int interval, int complete, int incomplete, String hexInfoHash) {
 		this.announce.setInterval(interval);
 	}
 
 	@Override
 	public void handleDiscoveredPeers(List<Peer> peers, String hexInfoHash) {
+    if (hexInfoHash == null) return;
+
 		ClientSharedTorrent torrent = this.torrents.get(hexInfoHash);
 		
 		if (torrent == null) {
@@ -518,6 +519,5 @@ public class MultiTorrentClient implements
 	}
 
 	@Override
-	public void handleNewPeerConnection(Socket s, byte[] peerId,
-			String torrentIdentifier) {	/* Do nothing */ }
+	public void handleNewPeerConnection(Socket s, byte[] peerId, String hexInfoHash) {	/* Do nothing */ }
 }

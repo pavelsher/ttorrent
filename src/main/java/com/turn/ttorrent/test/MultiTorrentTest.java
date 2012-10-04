@@ -1,6 +1,5 @@
 package com.turn.ttorrent.test;
 
-import com.turn.ttorrent.client.Client;
 import com.turn.ttorrent.client.ClientSharedTorrent;
 import com.turn.ttorrent.client.MultiTorrentClient;
 import com.turn.ttorrent.client.SharedTorrent;
@@ -64,6 +63,7 @@ public class MultiTorrentTest {
 					new File(ROOT_FILE_DIR + "file3.torrent"), 
 					new File(ROOT_FILE_DIR + "client3"), false);
 			
+/*
 			Client client1 = new Client(InetAddress.getLocalHost(), torrent1);
 			client1.share();
 			
@@ -90,7 +90,8 @@ public class MultiTorrentTest {
 			
 			Client client9 = new Client(InetAddress.getLocalHost(), torrent3_3);
 			client9.share();
-			
+*/
+
 		} else {
 			ClientSharedTorrent torrent1 = ClientSharedTorrent.fromFile(
 					new File(ROOT_FILE_DIR + "file1.torrent"), 

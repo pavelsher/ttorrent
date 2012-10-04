@@ -156,10 +156,9 @@ public abstract class MultiTorrentTrackerClient {
 	 * @param incomplete The number of leechers on this torrent.
 	 * @param interval The announce interval requested by the tracker.
 	 */
-	protected void fireAnnounceResponseEvent(int complete, int incomplete,
-		int interval) {
+	protected void fireAnnounceResponseEvent(int complete, int incomplete, int interval) {
 		for (AnnounceResponseListener listener : this.listeners) {
-			listener.handleAnnounceResponse(interval, complete, incomplete);
+			listener.handleAnnounceResponse(interval, complete, incomplete, "");
 		}
 	}
 

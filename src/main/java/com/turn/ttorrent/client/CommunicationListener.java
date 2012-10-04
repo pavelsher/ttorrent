@@ -15,13 +15,13 @@
  */
 package com.turn.ttorrent.client;
 
+import com.turn.ttorrent.client.peer.SharingPeer;
+
 import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.EventListener;
 import java.util.List;
-
-import com.turn.ttorrent.client.peer.SharingPeer;
 
 /**
  * EventListener interface for objects that want to handle socket communications.
@@ -38,5 +38,5 @@ public interface CommunicationListener extends EventListener {
 
 	public void handleFailedConnection(SharingPeer peer, Throwable cause);
 	
-	public void handleNewPeerConnection(Socket s, byte[] peerId, String torrentIdentifier);
+	public void handleNewPeerConnection(Socket s, byte[] peerId, String hexInfoHash);
 }

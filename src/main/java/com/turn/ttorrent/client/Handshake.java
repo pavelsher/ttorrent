@@ -53,6 +53,10 @@ public class Handshake {
 		return this.infoHash.array();
 	}
 
+  public String getHexInfoHash() {
+    return Torrent.byteArrayToHexString(getInfoHash());
+  }
+
 	public byte[] getPeerId() {
 		return this.peerId.array();
 	}

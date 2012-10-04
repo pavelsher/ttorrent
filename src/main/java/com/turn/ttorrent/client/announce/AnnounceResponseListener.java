@@ -35,8 +35,7 @@ public interface AnnounceResponseListener extends EventListener {
 	 * @param complete The number of seeders on this torrent.
 	 * @param incomplete The number of leechers on this torrent.
 	 */
-	public void handleAnnounceResponse(int interval, int complete,
-		int incomplete);
+	public void handleAnnounceResponse(int interval, int complete, int incomplete, String hexInfoHash);
 
 	/**
 	 * Handle the discovery of new peers.

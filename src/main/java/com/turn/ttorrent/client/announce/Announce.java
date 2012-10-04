@@ -17,19 +17,14 @@ package com.turn.ttorrent.client.announce;
 
 import com.turn.ttorrent.client.SharedTorrent;
 import com.turn.ttorrent.common.Peer;
-import com.turn.ttorrent.common.protocol.TrackerMessage.*;
+import com.turn.ttorrent.common.protocol.TrackerMessage.AnnounceRequestMessage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.net.UnknownServiceException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.*;
 
 /**
  * BitTorrent announce sub-system.
@@ -75,8 +70,6 @@ public class Announce implements Runnable {
 	 *
 	 * @param torrent The torrent we're announcing about.
 	 * @param peer Our peer specification.
-	 * @param type A string representing the announce type (used in the thread
-	 * name).
 	 */
 	public Announce(SharedTorrent torrent, Peer peer) {
 		this.peer = peer;
@@ -87,6 +80,7 @@ public class Announce implements Runnable {
 		 * Build the tiered structure of tracker clients mapping to the
 		 * trackers of the torrent.
 		 */
+
 		for (List<URI> tier : torrent.getAnnounceList()) {
 			ArrayList<TrackerClient> tierClients = new ArrayList<TrackerClient>();
 			for (URI tracker : tier) {

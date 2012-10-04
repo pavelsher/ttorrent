@@ -76,7 +76,7 @@ public class ConnectionHandler implements Runnable {
 	private static final int OUTBOUND_CONNECTIONS_POOL_SIZE = 20;
 	private static final int OUTBOUND_CONNECTIONS_THREAD_KEEP_ALIVE_SECS = 10;
 
-	private SharedTorrent torrent;
+	private final ConcurrentMap<String, SharedTorrent> torrents;
 	private String id;
 	private ServerSocket socket;
 	private InetSocketAddress address;
@@ -95,15 +95,15 @@ public class ConnectionHandler implements Runnable {
 	 * PORT_RANGE_START to PORT_RANGE_END.
 	 * </p>
 	 *
-	 * @param torrent The torrent shared by this client.
+	 * @param torrents The torrents shared by this client.
 	 * @param id This client's peer ID.
 	 * @param address The address to bind to.
 	 * @throws IOException When the service can't be started because no port in
 	 * the defined range is available or usable.
 	 */
-	ConnectionHandler(SharedTorrent torrent, String id, InetAddress address)
+	ConnectionHandler(ConcurrentMap<String, SharedTorrent> torrents, String id, InetAddress address)
 		throws IOException {
-		this.torrent = torrent;
+		this.torrents = torrents;
 		this.id = id;
 
 		// Bind to the first available port in the range
@@ -275,8 +275,8 @@ public class ConnectionHandler implements Runnable {
 		try {
 			logger.debug("New incoming connection ...");
 			Handshake hs = this.validateHandshake(socket, null);
-			this.sendHandshake(socket);
-			this.fireNewPeerConnection(socket, hs.getPeerId());
+			this.sendHandshake(socket, hs.getInfoHash());
+			this.fireNewPeerConnection(socket, hs.getPeerId(), Torrent.byteArrayToHexString(hs.getInfoHash()));
 		} catch (ParseException pe) {
 			logger.debug("Invalid handshake from {}: {}",
 				this.socketRepr(socket), pe.getMessage());
@@ -354,11 +354,12 @@ public class ConnectionHandler implements Runnable {
     logger.trace("Received handshake: " + Torrent.byteArrayToHexString(data));
 
 		Handshake hs = Handshake.parse(ByteBuffer.wrap(data));
-		if (!Arrays.equals(hs.getInfoHash(), this.torrent.getInfoHash())) {
-			throw new ParseException("Handshake for unknown torrent " +
-					Torrent.byteArrayToHexString(hs.getInfoHash()) +
-					" from " + this.socketRepr(socket) + ".", pstrlen + 9);
-		}
+    String hashInfo = hs.getHexInfoHash();
+    if (!this.torrents.containsKey(hashInfo)) {
+      throw new ParseException("Handshake for unknown torrent " +
+   					Torrent.byteArrayToHexString(hs.getInfoHash()) +
+   					" from " + this.socketRepr(socket) + ".", pstrlen + 9);
+    }
 
 		if (peerId != null && !Arrays.equals(hs.getPeerId(), peerId)) {
 			throw new ParseException("Announced peer ID " +
@@ -375,10 +376,9 @@ public class ConnectionHandler implements Runnable {
 	 *
 	 * @param socket The socket to the remote peer.
 	 */
-	private void sendHandshake(Socket socket) throws IOException {
+	private void sendHandshake(Socket socket, byte[] infoHash) throws IOException {
 		OutputStream os = socket.getOutputStream();
-    byte[] bytes = Handshake.craft(this.torrent.getInfoHash(),
-        this.id.getBytes(Torrent.BYTE_ENCODING)).getBytes();
+    byte[] bytes = Handshake.craft(infoHash, this.id.getBytes(Torrent.BYTE_ENCODING)).getBytes();
     logger.trace("Send handshake: " + Torrent.byteArrayToHexString(bytes));
     os.write(bytes);
 	}
@@ -389,9 +389,9 @@ public class ConnectionHandler implements Runnable {
 	 * @param socket The socket to the newly connected peer.
 	 * @param peerId The peer ID of the connected peer.
 	 */
-	private void fireNewPeerConnection(Socket socket, byte[] peerId) {
+	private void fireNewPeerConnection(Socket socket, byte[] peerId, String hexInfoHash) {
 		for (CommunicationListener listener : this.listeners) {
-			listener.handleNewPeerConnection(socket, peerId, "");
+			listener.handleNewPeerConnection(socket, peerId, hexInfoHash);
 		}
 	}
 
@@ -454,14 +454,14 @@ public class ConnectionHandler implements Runnable {
 				logger.info("Connecting to {}...", this.peer);
 				socket.connect(address, 3*1000);
 
-				this.handler.sendHandshake(socket);
+				this.handler.sendHandshake(socket, this.peer.getTorrent().getInfoHash());
 				Handshake hs = this.handler.validateHandshake(socket,
 					(this.peer.hasPeerId()
 						 ? this.peer.getPeerId().array()
 						 : null));
 				logger.info("Handshaked with {}, peer ID is {}.",
 					this.peer, Torrent.byteArrayToHexString(hs.getPeerId()));
-				this.handler.fireNewPeerConnection(socket, hs.getPeerId());
+				this.handler.fireNewPeerConnection(socket, hs.getPeerId(), this.peer.getTorrent().getHexInfoHash());
 			} catch (IOException ioe) {
 				try { socket.close(); } catch (IOException e) { }
 				this.handler.fireFailedConnection(this.peer, ioe);

@@ -132,12 +132,16 @@ public abstract class TrackerClient {
 
 		AnnounceResponseMessage response =
 			(AnnounceResponseMessage)message;
+
 		this.fireAnnounceResponseEvent(
 			response.getComplete(),
 			response.getIncomplete(),
-			response.getInterval());
+			response.getInterval(),
+      this.torrent.getHexInfoHash());
+
 		this.fireDiscoveredPeersEvent(
-			response.getPeers());
+			response.getPeers(),
+      this.torrent.getHexInfoHash());
 	}
 
 	/**
@@ -147,10 +151,9 @@ public abstract class TrackerClient {
 	 * @param incomplete The number of leechers on this torrent.
 	 * @param interval The announce interval requested by the tracker.
 	 */
-	protected void fireAnnounceResponseEvent(int complete, int incomplete,
-		int interval) {
+	protected void fireAnnounceResponseEvent(int complete, int incomplete, int interval, String hexInfoHash) {
 		for (AnnounceResponseListener listener : this.listeners) {
-			listener.handleAnnounceResponse(interval, complete, incomplete);
+			listener.handleAnnounceResponse(interval, complete, incomplete, hexInfoHash);
 		}
 	}
 
@@ -159,9 +162,9 @@ public abstract class TrackerClient {
 	 *
 	 * @param peers The list of peers discovered.
 	 */
-	protected void fireDiscoveredPeersEvent(List<Peer> peers) {
+	protected void fireDiscoveredPeersEvent(List<Peer> peers, String hexInfoHash) {
 		for (AnnounceResponseListener listener : this.listeners) {
-			listener.handleDiscoveredPeers(peers, "");
+			listener.handleDiscoveredPeers(peers, hexInfoHash);
 		}
 	}
 }
