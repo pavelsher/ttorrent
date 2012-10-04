@@ -1,26 +1,5 @@
 package com.turn.ttorrent.client;
 
-import java.io.IOException;
-import java.io.UnsupportedEncodingException;
-import java.net.InetAddress;
-import java.net.Socket;
-import java.net.UnknownHostException;
-import java.net.UnknownServiceException;
-import java.nio.ByteBuffer;
-import java.nio.channels.SocketChannel;
-import java.text.ParseException;
-import java.util.Arrays;
-import java.util.BitSet;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.turn.ttorrent.client.Client.ClientState;
 import com.turn.ttorrent.client.announce.AnnounceException;
 import com.turn.ttorrent.client.announce.AnnounceResponseListener;
@@ -33,6 +12,21 @@ import com.turn.ttorrent.common.Peer;
 import com.turn.ttorrent.common.Torrent;
 import com.turn.ttorrent.common.protocol.PeerMessage;
 import com.turn.ttorrent.common.protocol.TrackerMessage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.net.InetAddress;
+import java.net.Socket;
+import java.net.UnknownHostException;
+import java.net.UnknownServiceException;
+import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
+import java.text.ParseException;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * An implementation of the Client class that manages multiple torrents and uses a non-blocking IO setup. 
@@ -74,6 +68,7 @@ public class MultiTorrentClient implements
 	
 	// List of all torrents this client is currently sharing/downloading
 	private ConcurrentMap<String, ClientSharedTorrent> torrents = new ConcurrentHashMap<String, ClientSharedTorrent>();
+  private volatile boolean stopped;
 	
 	public MultiTorrentClient(InetAddress address) 
 			throws UnknownHostException, IOException {	
@@ -123,6 +118,18 @@ public class MultiTorrentClient implements
 			this.thread.start();
 		}
 	}
+
+  public void stop() {
+    stopped = true;
+    if (this.thread != null) {
+      this.thread.interrupt();
+      try {
+        this.thread.join();
+      } catch (InterruptedException e) {
+        //
+      }
+    }
+  }
 	
 	public void share(String identifier) throws IOException {
 		ClientSharedTorrent torrent = torrents.get(identifier);
@@ -449,7 +456,7 @@ public class MultiTorrentClient implements
 		int optimisticIterations = 0;
 		int rateComputationIterations = 0;
 		
-		while (!this.torrents.isEmpty()) {
+		while (!stopped) {
 			optimisticIterations =
 					(optimisticIterations == 0 ?
 							MultiTorrentClient.OPTIMISTIC_UNCHOKE_ITERATIONS :
@@ -512,5 +519,5 @@ public class MultiTorrentClient implements
 
 	@Override
 	public void handleNewPeerConnection(Socket s, byte[] peerId,
-			String torrentIdentifier) {	/* Do nothing */ }	
+			String torrentIdentifier) {	/* Do nothing */ }
 }

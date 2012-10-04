@@ -6,7 +6,7 @@
   <url>http://turn.github.com/ttorrent/</url>
   <groupId>com.turn.ttorrent</groupId>
   <artifactId>ttorrent</artifactId>
-  <version>1.1.2</version>
+  <version>1.1.2-snapshot</version>
   <packaging>jar</packaging>
 
   <organization>
@@ -15,8 +15,8 @@
   </organization>
 
   <scm>
-    <connection>scm:git:git://github.com/turn/ttorrent.git</connection>
-    <url>http://github.com/turn/ttorrent</url>
+    <connection>scm:git:git://github.com/pavelsher/ttorrent.git</connection>
+    <url>http://github.com/pavelsher/ttorrent</url>
   </scm>
 
   <licenses>
@@ -28,7 +28,7 @@
 
   <issueManagement>
     <system>GitHub</system>
-    <url>https://github.com/turn/ttorrent/issues</url>
+    <url>https://github.com/pavelsher/ttorrent/issues</url>
   </issueManagement>
 
   <developers>

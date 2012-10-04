@@ -15,31 +15,21 @@
  */
 package com.turn.ttorrent.client;
 
-import com.turn.ttorrent.common.Torrent;
 import com.turn.ttorrent.client.peer.SharingPeer;
+import com.turn.ttorrent.common.Torrent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.net.SocketException;
-import java.net.SocketTimeoutException;
+import java.net.*;
 import java.nio.ByteBuffer;
 import java.text.ParseException;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.concurrent.*;
 
 
 /**
@@ -353,15 +343,19 @@ public class ConnectionHandler implements Runnable {
 		InputStream is = socket.getInputStream();
 
 		// Read the handshake from the wire
+
 		int pstrlen = is.read();
 		byte[] data = new byte[Handshake.BASE_HANDSHAKE_LENGTH + pstrlen];
 		data[0] = (byte)pstrlen;
 		is.read(data, 1, data.length-1);
 
 		// Parse and check the handshake
+
+    logger.trace("Received handshake: " + Torrent.byteArrayToHexString(data));
+
 		Handshake hs = Handshake.parse(ByteBuffer.wrap(data));
 		if (!Arrays.equals(hs.getInfoHash(), this.torrent.getInfoHash())) {
-			throw new ParseException("Handshake for unknow torrent " +
+			throw new ParseException("Handshake for unknown torrent " +
 					Torrent.byteArrayToHexString(hs.getInfoHash()) +
 					" from " + this.socketRepr(socket) + ".", pstrlen + 9);
 		}
@@ -383,8 +377,10 @@ public class ConnectionHandler implements Runnable {
 	 */
 	private void sendHandshake(Socket socket) throws IOException {
 		OutputStream os = socket.getOutputStream();
-		os.write(Handshake.craft(this.torrent.getInfoHash(),
-					this.id.getBytes(Torrent.BYTE_ENCODING)).getBytes());
+    byte[] bytes = Handshake.craft(this.torrent.getInfoHash(),
+        this.id.getBytes(Torrent.BYTE_ENCODING)).getBytes();
+    logger.trace("Send handshake: " + Torrent.byteArrayToHexString(bytes));
+    os.write(bytes);
 	}
 
 	/**

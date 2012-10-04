@@ -18,7 +18,7 @@ You might also need to increase the number of files to store to prevent logs fro
 
   <category name="com.turn.ttorrent" additivity="false">
     <!-- Set this to DEBUG to enable debug logging -->
-    <priority value="INFO"/>
+    <priority value="TRACE"/>
     <appender-ref ref="CONSOLE"/>
   </category>
 
