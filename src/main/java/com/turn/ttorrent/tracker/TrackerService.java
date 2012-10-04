@@ -205,7 +205,8 @@ public class TrackerService implements Container {
 		// client that would have had us register that peer on the torrent this
 		// request refers to.
 		if (event != null && torrent.getPeer(peerId) == null &&
-			!AnnounceRequestMessage.RequestEvent.STARTED.equals(event)) {
+			!(AnnounceRequestMessage.RequestEvent.STARTED.equals(event) ||
+        AnnounceRequestMessage.RequestEvent.STOPPED.equals(event))) {
 			this.serveError(response, body, Status.BAD_REQUEST,
 				ErrorMessage.FailureReason.INVALID_EVENT);
 			return;
