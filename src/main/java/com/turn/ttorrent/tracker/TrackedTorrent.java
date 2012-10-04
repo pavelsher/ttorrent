@@ -307,4 +307,11 @@ public class TrackedTorrent implements TorrentHash {
   public String getHexInfoHash() {
     return Torrent.byteArrayToHexString(this.info_hash);
   }
+
+  @Override
+  public String toString() {
+    return "TrackedTorrent{" +
+        "info_hash=" + getHexInfoHash() +
+        '}';
+  }
 }
