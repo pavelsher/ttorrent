@@ -285,7 +285,7 @@ class PeerExchange {
 
 				// Loop until told to stop. When stop was requested, loop until
 				// the queue is served.
-				while (!stop || (stop && sendQueue.size() > 0)) {
+				while (!stop || sendQueue.size() > 0) {
 					try {
 						// Wait for two minutes for a message to send
 						PeerMessage message = sendQueue.poll(

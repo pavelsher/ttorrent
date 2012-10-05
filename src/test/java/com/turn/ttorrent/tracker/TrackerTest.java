@@ -157,7 +157,7 @@ public class TrackerTest extends TestCase {
 
     try {
       seeder.share();
-      leech.share();
+      leech.download();
 
       waitForFileInDir(downloadDir, "file1.jar");
       waitForFileInDir(downloadDir, "file2.jar");

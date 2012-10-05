@@ -238,7 +238,7 @@ public class Client extends Observable implements Runnable,
 	}
 
 	/**
-	 * Download and share this client's torrent.
+	 * Download and share this client's torrents.
 	 *
 	 * @param seed Seed time in seconds after the download is complete. Pass
 	 * <code>0</code> to immediately stop after downloading.
@@ -822,7 +822,11 @@ public class Client extends Observable implements Runnable,
 				}
 
         this.setState(ClientState.SEEDING, torrent.getHexInfoHash());
-			}
+
+        if (this.seed == 0) {
+          peer.unbind(true);
+        }
+      }
 		}
 	}
 
