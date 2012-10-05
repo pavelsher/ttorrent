@@ -17,6 +17,7 @@ package com.turn.ttorrent.tracker;
 
 import com.turn.ttorrent.bcodec.BEValue;
 import com.turn.ttorrent.bcodec.BEncoder;
+import com.turn.ttorrent.common.Peer;
 import com.turn.ttorrent.common.Torrent;
 import com.turn.ttorrent.common.protocol.TrackerMessage.AnnounceRequestMessage;
 import com.turn.ttorrent.common.protocol.TrackerMessage.ErrorMessage;
@@ -38,6 +39,7 @@ import java.net.URLDecoder;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.WritableByteChannel;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentMap;
@@ -199,6 +201,12 @@ public class TrackerService implements Container {
 			event = AnnounceRequestMessage.RequestEvent.STARTED;
 		}
 
+    if (event != null && torrent.getPeer(peerId) == null &&
+  			AnnounceRequestMessage.RequestEvent.STOPPED.equals(event)) {
+      writeAnnounceResponse(response, body, torrent, null);
+      return;
+    }
+
 		// If an event other than 'started' is specified and we also haven't
 		// seen the peer on this torrent before, something went wrong. A
 		// previous 'started' announce request should have been made by the
@@ -206,7 +214,7 @@ public class TrackerService implements Container {
 		// request refers to.
 		if (event != null && torrent.getPeer(peerId) == null &&
 			!(AnnounceRequestMessage.RequestEvent.STARTED.equals(event) ||
-        AnnounceRequestMessage.RequestEvent.STOPPED.equals(event))) {
+        AnnounceRequestMessage.RequestEvent.COMPLETED.equals(event))) {
 			this.serveError(response, body, Status.BAD_REQUEST,
 				ErrorMessage.FailureReason.INVALID_EVENT);
 			return;
@@ -230,25 +238,29 @@ public class TrackerService implements Container {
 		}
 
 		// Craft and output the answer
-		HTTPAnnounceResponseMessage announceResponse = null;
-		try {
-			announceResponse = HTTPAnnounceResponseMessage.craft(
-				torrent.getAnnounceInterval(),
-				TrackedTorrent.MIN_ANNOUNCE_INTERVAL_SECONDS,
-				this.version,
-				torrent.seeders(),
-				torrent.leechers(),
-				torrent.getSomePeers(peer),
-				torrent.getHexInfoHash());
-			WritableByteChannel channel = Channels.newChannel(body);
-			channel.write(announceResponse.getData());
-		} catch (Exception e) {
-			this.serveError(response, body, Status.INTERNAL_SERVER_ERROR,
-				e.getMessage());
-		}
+    writeAnnounceResponse(response, body, torrent, peer);
 	}
 
-	/**
+  private void writeAnnounceResponse(Response response, OutputStream body, TrackedTorrent torrent, TrackedPeer peer) throws IOException {
+    HTTPAnnounceResponseMessage announceResponse = null;
+    try {
+      announceResponse = HTTPAnnounceResponseMessage.craft(
+        torrent.getAnnounceInterval(),
+        TrackedTorrent.MIN_ANNOUNCE_INTERVAL_SECONDS,
+        this.version,
+        torrent.seeders(),
+        torrent.leechers(),
+        peer == null ? Collections.<Peer>emptyList() : torrent.getSomePeers(peer),
+        torrent.getHexInfoHash());
+      WritableByteChannel channel = Channels.newChannel(body);
+      channel.write(announceResponse.getData());
+    } catch (Exception e) {
+      this.serveError(response, body, Status.INTERNAL_SERVER_ERROR,
+        e.getMessage());
+    }
+  }
+
+  /**
 	 * Parse the query parameters using our defined BYTE_ENCODING.
 	 *
 	 * <p>

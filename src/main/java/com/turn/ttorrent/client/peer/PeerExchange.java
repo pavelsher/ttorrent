@@ -17,11 +17,12 @@ package com.turn.ttorrent.client.peer;
 
 import com.turn.ttorrent.client.SharedTorrent;
 import com.turn.ttorrent.common.protocol.PeerMessage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.lang.InterruptedException;
 import java.net.Socket;
 import java.net.SocketException;
 import java.nio.ByteBuffer;
@@ -32,9 +33,6 @@ import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 
 /**

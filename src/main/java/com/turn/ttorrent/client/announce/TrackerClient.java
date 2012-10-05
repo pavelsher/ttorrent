@@ -31,13 +31,11 @@ public abstract class TrackerClient {
 	/** The set of listeners to announce request answers. */
 	private final Set<AnnounceResponseListener> listeners;
 
-	protected final SharedTorrent torrent;
 	protected final Peer peer;
 	protected final URI tracker;
 
-	public TrackerClient(SharedTorrent torrent, Peer peer, URI tracker) {
+	public TrackerClient(Peer peer, URI tracker) {
 		this.listeners = new HashSet<AnnounceResponseListener>();
-		this.torrent = torrent;
 		this.peer = peer;
 		this.tracker = tracker;
 	}
@@ -72,12 +70,13 @@ public abstract class TrackerClient {
 	 * with the decoded payload.
 	 * </p>
 	 *
-	 * @param event The announce event type (can be AnnounceEvent.NONE for
-	 * periodic updates).
-	 * @param inhibitEvent Prevent event listeners from being notified.
-	 */
+   * @param event The announce event type (can be AnnounceEvent.NONE for
+   * periodic updates).
+   * @param inhibitEvent Prevent event listeners from being notified.
+   * @param torrent
+   */
 	public abstract void announce(AnnounceRequestMessage.RequestEvent event,
-		boolean inhibitEvent) throws AnnounceException;
+                                boolean inhibitEvent, SharedTorrent torrent) throws AnnounceException;
 
 	/**
 	 * Close any opened announce connection.
@@ -111,11 +110,12 @@ public abstract class TrackerClient {
 	 * listeners.
 	 * </p>
 	 *
-	 * @param message The incoming {@link TrackerMessage}.
-	 * @param inhibitEvents Whether or not to prevent events from being fired.
-	 */
+   * @param message The incoming {@link com.turn.ttorrent.common.protocol.TrackerMessage}.
+   * @param inhibitEvents Whether or not to prevent events from being fired.
+   * @param hexInfoHash
+   */
 	protected void handleTrackerAnnounceResponse(TrackerMessage message,
-		boolean inhibitEvents) throws AnnounceException {
+                                               boolean inhibitEvents, String hexInfoHash) throws AnnounceException {
 		if (message instanceof ErrorMessage) {
 			ErrorMessage error = (ErrorMessage)message;
 			throw new AnnounceException(error.getReason());
@@ -137,11 +137,11 @@ public abstract class TrackerClient {
 			response.getComplete(),
 			response.getIncomplete(),
 			response.getInterval(),
-      this.torrent.getHexInfoHash());
+      hexInfoHash);
 
 		this.fireDiscoveredPeersEvent(
 			response.getPeers(),
-      this.torrent.getHexInfoHash());
+      hexInfoHash);
 	}
 
 	/**

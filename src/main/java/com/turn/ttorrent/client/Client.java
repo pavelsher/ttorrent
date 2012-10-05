@@ -41,6 +41,7 @@ import java.nio.channels.UnsupportedAddressTypeException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * A pure-java BitTorrent client.
@@ -92,8 +93,8 @@ public class Client extends Observable implements Runnable,
 		SHARING,
 		SEEDING,
 		ERROR,
-		DONE;
-	};
+		DONE
+	}
 
 	private static final String BITTORRENT_ID_PREFIX = "-TO0042-";
 
@@ -104,10 +105,9 @@ public class Client extends Observable implements Runnable,
 	private long seed;
 
 	private ConnectionHandler service;
-	private ConcurrentMap<String, SharingPeer> peers;
-	private ConcurrentMap<String, SharingPeer> connected;
+	private Collection<SharingPeer> peers;
 
-  private ConcurrentMap<String, Announce> torrentAnnounces;
+  private Announce announce;
   private ConcurrentMap<String, SharedTorrent> torrents;
  	private ConcurrentMap<String, ClientState> torrentsState;
 
@@ -116,8 +116,8 @@ public class Client extends Observable implements Runnable,
 	/**
 	 * Initialize the BitTorrent client.
 	 *
-	 * @param address The address to bind to.
-	 */
+   * @param address The address to bind to.
+   */
 	public Client(InetAddress address) throws IOException {
     this.torrents = new ConcurrentHashMap<String, SharedTorrent>();
     this.torrentsState = new ConcurrentHashMap<String, ClientState>();
@@ -139,7 +139,8 @@ public class Client extends Observable implements Runnable,
 		// Initialize the announce request thread, and register ourselves to it
 		// as well.
 
-    torrentAnnounces = new ConcurrentHashMap<String, Announce>();
+    this.announce = new Announce(this.self);
+    announce.start();
 
 		logger.info("BitTorrent client [{}] started and " +
 			"listening at {}:{}...",
@@ -149,8 +150,7 @@ public class Client extends Observable implements Runnable,
 				this.self.getPort()
 			});
 
-		this.peers = new ConcurrentHashMap<String, SharingPeer>();
-		this.connected = new ConcurrentHashMap<String, SharingPeer>();
+		this.peers = new CopyOnWriteArrayList<SharingPeer>();
 		this.random = new Random(System.currentTimeMillis());
 	}
 
@@ -166,17 +166,12 @@ public class Client extends Observable implements Runnable,
 
 		// Initial completion test
 		if (torrent.isComplete()) {
-			this.seed(torrent.getHexInfoHash());
+      this.setState(ClientState.SEEDING, torrent.getHexInfoHash());
 		} else {
 			this.setState(ClientState.SHARING, torrent.getHexInfoHash());
 		}
 
-    Announce announce = new Announce(torrent, this.self);
-
-    this.torrentAnnounces.put(torrent.getHexInfoHash(), announce);
-
-    announce.register(this);
-    announce.start();
+    this.announce.addTorrent(torrent, this);
   }
 
 	/**
@@ -197,7 +192,7 @@ public class Client extends Observable implements Runnable,
 	 * Returns the set of known peers.
 	 */
 	public Set<SharingPeer> getPeers() {
-		return new HashSet<SharingPeer>(this.peers.values());
+		return new HashSet<SharingPeer>(this.peers);
 	}
 
 	/**
@@ -363,9 +358,9 @@ public class Client extends Observable implements Runnable,
 
 		// Close all peer connections
 		logger.debug("Closing all remaining peer connections...");
-		for (SharingPeer peer : this.connected.values()) {
-			peer.unbind(true);
-		}
+		for (SharingPeer peer : this.peers) {
+      peer.unbind(true);
+    }
 
 		this.finish();
 	}
@@ -375,9 +370,7 @@ public class Client extends Observable implements Runnable,
 	 */
 	private void finish() {
 
-    for (Announce announce: this.torrentAnnounces.values()) {
-      announce.stop();
-    }
+    this.announce.stop();
 
     for (SharedTorrent torrent: this.torrents.values()) {
       torrent.close();
@@ -404,9 +397,11 @@ public class Client extends Observable implements Runnable,
 	public synchronized void info() {
 		float dl = 0;
 		float ul = 0;
-		for (SharingPeer peer : this.connected.values()) {
+    int numConnected = 0;
+		for (SharingPeer peer : getConnectedPeers()) {
 			dl += peer.getDLRate().get();
 			ul += peer.getULRate().get();
+      numConnected++;
 		}
 
     for (SharedTorrent torrent: this.torrents.values()) {
@@ -418,7 +413,7 @@ public class Client extends Observable implements Runnable,
     				String.format("%.2f", torrent.getCompletion()),
     				torrent.getAvailablePieces().cardinality(),
     				torrent.getRequestedPieces().cardinality(),
-    				this.connected.size(),
+            numConnected,
     				this.peers.size(),
     				String.format("%.2f", dl/1024.0),
     				String.format("%.2f", ul/1024.0),
@@ -439,7 +434,7 @@ public class Client extends Observable implements Runnable,
 	 * </p>
 	 */
 	private synchronized void resetPeerRates() {
-		for (SharingPeer peer : this.connected.values()) {
+		for (SharingPeer peer : getConnectedPeers()) {
 			peer.getDLRate().reset();
 			peer.getULRate().reset();
 		}
@@ -461,29 +456,29 @@ public class Client extends Observable implements Runnable,
 		SharingPeer peer;
 
 		synchronized (this.peers) {
-			logger.trace("Searching for {}...", search);
-			if (search.hasPeerId()) {
-				peer = this.peers.get(search.getHexPeerId());
-				if (peer != null) {
-					logger.trace("Found peer (by peer ID): {}.", peer);
-					this.peers.put(peer.getHostIdentifier(), peer);
-					this.peers.put(search.getHostIdentifier(), peer);
-					return peer;
-				}
-			}
+      logger.trace("Searching for {}...", search);
 
-			peer = this.peers.get(search.getHostIdentifier());
-			if (peer != null) {
-				if (search.hasPeerId()) {
-					logger.trace("Recording peer ID {} for {}.",
-						search.getHexPeerId(), peer);
-					peer.setPeerId(search.getPeerId());
-					this.peers.put(search.getHexPeerId(), peer);
-				}
+      List<SharingPeer> found = new ArrayList<SharingPeer>();
+      for (SharingPeer p: this.peers) {
+        if ( (search.getHexPeerId() != null && search.getHexPeerId().equals(p.getHexPeerId())) ||
+             (search.getHostIdentifier() != null && search.getHostIdentifier().equals(p.getHostIdentifier())) ) {
+          found.add(p);
+        }
+      }
 
-				logger.debug("Found peer (by host ID): {}.", peer);
-				return peer;
-			}
+
+      for (SharingPeer f: found) {
+        if (search.hasPeerId()) {
+          f.setPeerId(search.getPeerId());
+        }
+      }
+
+      for (SharingPeer f: found) {
+        if (f.getTorrentHexInfoHash().equals(hexInfoHash)) {
+          logger.trace("Found peer: {}.", f);
+          return f;
+        }
+      }
 
       SharedTorrent torrent = this.torrents.get(hexInfoHash);
 
@@ -491,10 +486,7 @@ public class Client extends Observable implements Runnable,
 				search.getPeerId(), torrent);
 			logger.trace("Created new peer: {}.", peer);
 
-			this.peers.put(peer.getHostIdentifier(), peer);
-			if (peer.hasPeerId()) {
-				this.peers.put(peer.getHexPeerId(), peer);
-			}
+			this.peers.add(peer);
 
 			return peer;
 		}
@@ -514,33 +506,8 @@ public class Client extends Observable implements Runnable,
 	 * the download or upload rate we get from them.
 	 */
 	private Comparator<SharingPeer> getPeerRateComparator() {
-    return new Comparator<SharingPeer>() {
-      @Override
-      public int compare(SharingPeer o1, SharingPeer o2) {
-        Comparator<SharingPeer> o1comparator = getComparatorForPeer(o1);
-        Comparator<SharingPeer> o2comparator = getComparatorForPeer(o2);
-
-        int res1 = o1comparator.compare(o1, o2);
-        int res2 = o2comparator.compare(o1, o2);
-
-        if (res1 < 0 && res2 < 0) return -1;
-        if (res1 > 0 && res2 > 0) return 1;
-        return 0;
-      }
-    };
+    return new SharingPeer.DLRateComparator();
 	}
-
-  private Comparator<SharingPeer> getComparatorForPeer(SharingPeer peer) {
-    Torrent torrent = peer.getTorrent();
-    if (ClientState.SHARING.equals(this.getState(torrent.getHexInfoHash()))) {
-      return new SharingPeer.DLRateComparator();
-    } else if (ClientState.SEEDING.equals(this.getState(torrent.getHexInfoHash()))) {
-      return new SharingPeer.ULRateComparator();
-    } else {
-      throw new IllegalStateException("Client is neither sharing nor " +
-          "seeding, we shouldn't be comparing peers at this point.");
-    }
-  }
 
 	/**
 	 * Unchoke connected peers.
@@ -576,56 +543,64 @@ public class Client extends Observable implements Runnable,
 	private synchronized void unchokePeers(boolean optimistic) {
 		// Build a set of all connected peers, we don't care about peers we're
 		// not connected to.
-		TreeSet<SharingPeer> bound = new TreeSet<SharingPeer>(
-				this.getPeerRateComparator());
-		bound.addAll(this.connected.values());
+    TreeSet<SharingPeer> bound = new TreeSet<SharingPeer>(this.getPeerRateComparator());
+    bound.addAll(getConnectedPeers());
 
-		if (bound.size() == 0) {
-			logger.trace("No connected peers, skipping unchoking.");
-			return;
-		} else {
-			logger.trace("Running unchokePeers() on {} connected peers.",
-				bound.size());
-		}
+    if (bound.size() == 0) {
+      logger.trace("No connected peers, skipping unchoking.");
+      return;
+    } else {
+      logger.trace("Running unchokePeers() on {} connected peers.",
+        bound.size());
+    }
 
-		int downloaders = 0;
-		Set<SharingPeer> choked = new HashSet<SharingPeer>();
+    int downloaders = 0;
+    Set<SharingPeer> choked = new HashSet<SharingPeer>();
 
-		// We're interested in the top downloaders first, so use a descending
-		// set.
-		for (SharingPeer peer : bound.descendingSet()) {
-			if (downloaders < Client.MAX_DOWNLOADERS_UNCHOKE) {
-				// Unchoke up to MAX_DOWNLOADERS_UNCHOKE interested peers
-				if (peer.isChoking()) {
-					if (peer.isInterested()) {
-						downloaders++;
-					}
+    // We're interested in the top downloaders first, so use a descending
+    // set.
+    for (SharingPeer peer : bound.descendingSet()) {
+      if (downloaders < Client.MAX_DOWNLOADERS_UNCHOKE) {
+        // Unchoke up to MAX_DOWNLOADERS_UNCHOKE interested peers
+        if (peer.isChoking()) {
+          if (peer.isInterested()) {
+            downloaders++;
+          }
 
-					peer.unchoke();
-				}
-			} else {
-				// Choke everybody else
-				choked.add(peer);
-			}
-		}
+          peer.unchoke();
+        }
+      } else {
+        // Choke everybody else
+        choked.add(peer);
+      }
+    }
 
-		// Actually choke all chosen peers (if any), except the eventual
-		// optimistic unchoke.
-		if (choked.size() > 0) {
-			SharingPeer randomPeer = choked.toArray(
-					new SharingPeer[0])[this.random.nextInt(choked.size())];
+    // Actually choke all chosen peers (if any), except the eventual
+    // optimistic unchoke.
+    if (choked.size() > 0) {
+      SharingPeer randomPeer = choked.toArray(
+          new SharingPeer[0])[this.random.nextInt(choked.size())];
 
-			for (SharingPeer peer : choked) {
-				if (optimistic && peer == randomPeer) {
-					logger.debug("Optimistic unchoke of {}.", peer);
-					continue;
-				}
+      for (SharingPeer peer : choked) {
+        if (optimistic && peer == randomPeer) {
+          logger.debug("Optimistic unchoke of {}.", peer);
+          continue;
+        }
 
-				peer.choke();
-			}
-		}
+        peer.choke();
+      }
+    }
 	}
 
+  private Collection<SharingPeer> getConnectedPeers() {
+    Set<SharingPeer> result = new HashSet<SharingPeer>();
+    for (SharingPeer peer: this.peers) {
+      if (peer.isConnected()) {
+        result.add(peer);
+      }
+    }
+    return result;
+  }
 
 	/** AnnounceResponseListener handler(s). **********************************/
 
@@ -638,9 +613,7 @@ public class Client extends Observable implements Runnable,
 	 */
 	@Override
 	public void handleAnnounceResponse(int interval, int complete, int incomplete, String hexInfoHash) {
-    for (Announce announce: this.torrentAnnounces.values()) {
-      announce.setInterval(interval);
-    }
+    this.announce.setInterval(interval);
 	}
 
 	/**
@@ -676,7 +649,7 @@ public class Client extends Observable implements Runnable,
 				//     something), or we are a seeder but we're still
 				//     willing to initiate some out bound connections.
 				if (match.isConnected() ||
-					(this.isSeed(match.getTorrent().getHexInfoHash()) && this.connected.size() >=
+					(this.isSeed(hexInfoHash) && getConnectedPeers().size() >=
 						Client.VOLUNTARY_OUTBOUND_CONNECTIONS)) {
 					return;
 				}
@@ -713,7 +686,7 @@ public class Client extends Observable implements Runnable,
 			s.getPort(),
 			(peerId != null
 				? ByteBuffer.wrap(peerId)
-				: (ByteBuffer)null));
+				: null));
 
 		logger.info("Handling new peer connection with {}...", search);
 		SharingPeer peer = this.getOrCreatePeer(search, hexInfoHash);
@@ -731,16 +704,14 @@ public class Client extends Observable implements Runnable,
 				peer.bind(s);
 			}
 
-			this.connected.put(peer.getHexPeerId(), peer);
 			peer.register(peer.getTorrent());
 			logger.debug("New peer connection with {} [{}/{}].",
 				new Object[] {
 					peer,
-					this.connected.size(),
+					getConnectedPeers().size(),
 					this.peers.size()
 				});
 		} catch (Exception e) {
-			this.connected.remove(peer.getHexPeerId());
 			logger.warn("Could not handle new peer connection " +
 					"with {}: {}", peer, e.getMessage());
 		}
@@ -760,10 +731,7 @@ public class Client extends Observable implements Runnable,
 	@Override
 	public void handleFailedConnection(SharingPeer peer, Throwable cause) {
 		logger.info("Could not connect to {}: {}.", peer, cause.getMessage());
-		this.peers.remove(peer.getHostIdentifier());
-		if (peer.hasPeerId()) {
-			this.peers.remove(peer.getHexPeerId());
-		}
+		this.peers.remove(peer);
 	}
 
 	/** PeerActivityListener handler(s). **************************************/
@@ -828,7 +796,7 @@ public class Client extends Observable implements Runnable,
 
 				// Send a HAVE message to all connected peers
 				PeerMessage have = PeerMessage.HaveMessage.craft(piece.getIndex());
-				for (SharingPeer remote : this.connected.values()) {
+				for (SharingPeer remote : getConnectedPeers()) {
 					remote.send(have);
 				}
 
@@ -844,37 +812,30 @@ public class Client extends Observable implements Runnable,
         torrent.finish();
 
 				try {
-          Announce announce = this.torrentAnnounces.get(torrent.getHexInfoHash());
-          if (announce != null) {
-            announce.getCurrentTrackerClient()
-       						.announce(TrackerMessage
-                       .AnnounceRequestMessage
-                       .RequestEvent.COMPLETED, true);
-          }
+          this.announce.getCurrentTrackerClient(torrent)
+     						.announce(TrackerMessage
+                     .AnnounceRequestMessage
+                     .RequestEvent.COMPLETED, true, torrent);
 				} catch (AnnounceException ae) {
 					logger.warn("Error announcing completion event to " +
 						"tracker: {}", ae.getMessage());
 				}
 
-				this.seed(torrent.getHexInfoHash());
+        this.setState(ClientState.SEEDING, torrent.getHexInfoHash());
 			}
 		}
 	}
 
 	@Override
 	public void handlePeerDisconnected(SharingPeer peer) {
-		if (this.connected.remove(peer.hasPeerId()
-					? peer.getHexPeerId()
-					: peer.getHostIdentifier()) != null) {
-			logger.debug("Peer {} disconnected, [{}/{}].",
-				new Object[] {
-					peer,
-					this.connected.size(),
-					this.peers.size()
-				});
-		}
+    peer.reset();
 
-		peer.reset();
+    logger.debug("Peer {} disconnected, [{}/{}].",
+ 				new Object[] {
+ 					peer,
+ 					getConnectedPeers().size(),
+ 					this.peers.size()
+ 				});
 	}
 
 	@Override
@@ -888,53 +849,7 @@ public class Client extends Observable implements Runnable,
 
 	/** Post download seeding. ************************************************/
 
-	/**
-	 * Start the seeding period, if any.
-	 *
-	 * <p>
-	 * This method is called when all the pieces of our torrent have been
-	 * retrieved. This may happen immediately after the client starts if the
-	 * torrent was already fully download or we are the initial seeder client.
-	 * </p>
-	 *
-	 * <p>
-	 * When the download is complete, the client switches to seeding mode for
-	 * as long as requested in the <code>share()</code> call, if seeding was
-	 * requested. If not, the StopSeedingTask will execute immediately to stop
-	 * the client's main loop.
-	 * </p>
-	 *
-	 * @see StopSeedingTask
-	 */
-	private synchronized void seed(String hexInfoHash) {
-		// Silently ignore if we're already seeding.
-		if (ClientState.SEEDING.equals(this.getState(hexInfoHash))) {
-			return;
-		}
-
-    SharedTorrent torrent = this.torrents.get(hexInfoHash);
-    if (torrent == null) return;
-
-		logger.info("Download of {} pieces completed.", torrent.getPieceCount());
-
-		if (this.seed == 0) {
-			logger.info("No seeding requested, stopping client...");
-			this.stop();
-			return;
-		}
-
-		this.setState(ClientState.SEEDING, hexInfoHash);
-		if (this.seed < 0) {
-			logger.info("Seeding indefinitely...");
-			return;
-		}
-
-		logger.info("Seeding for {} seconds...", this.seed);
-		Timer timer = new Timer();
-		timer.schedule(new ClientShutdown(this, timer), this.seed*1000);
-	}
-
-	/**
+  /**
 	 * Timer task to stop seeding.
 	 *
 	 * <p>

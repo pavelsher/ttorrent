@@ -176,7 +176,22 @@ public class Tracker {
 
 		if (this.collector != null && this.collector.isAlive()) {
 			this.collector.interrupt();
-			logger.info("Peer collection terminated.");
+      try {
+        this.collector.join();
+      } catch (InterruptedException e) {
+        //
+      }
+      logger.info("Peer collection terminated.");
+		}
+
+		if (this.tracker != null && this.tracker.isAlive()) {
+			this.tracker.interrupt();
+      try {
+        this.tracker.join();
+      } catch (InterruptedException e) {
+        //
+      }
+      logger.info("Tracker terminated.");
 		}
 	}
 

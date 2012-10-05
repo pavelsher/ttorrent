@@ -20,6 +20,7 @@ import com.turn.ttorrent.common.Torrent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -273,7 +274,7 @@ public class ConnectionHandler implements Runnable {
 		Socket socket = this.socket.accept();
 
 		try {
-			logger.debug("New incoming connection ...");
+			logger.debug("[{}] new incoming connection ...", this.id);
 			Handshake hs = this.validateHandshake(socket, null);
 			this.sendHandshake(socket, hs.getInfoHash());
 			this.fireNewPeerConnection(socket, hs.getPeerId(), Torrent.byteArrayToHexString(hs.getInfoHash()));
@@ -312,8 +313,9 @@ public class ConnectionHandler implements Runnable {
 	 * executor to connect to the given peer.
 	 * </p>
 	 *
-	 * @param peer The peer to connect to.
-	 */
+   * @param peer The peer to connect to.
+   *
+   */
 	public void connect(SharingPeer peer) {
 		if (!this.isAlive()) {
 			throw new IllegalStateException(
@@ -345,13 +347,15 @@ public class ConnectionHandler implements Runnable {
 		// Read the handshake from the wire
 
 		int pstrlen = is.read();
+    if (pstrlen == -1) throw new EOFException("Invalid handshake, input stream is closed?!");
+
 		byte[] data = new byte[Handshake.BASE_HANDSHAKE_LENGTH + pstrlen];
 		data[0] = (byte)pstrlen;
 		is.read(data, 1, data.length-1);
 
 		// Parse and check the handshake
 
-    logger.trace("Received handshake: " + Torrent.byteArrayToHexString(data));
+    logger.trace("[{}] received handshake: {}", this.id, Torrent.byteArrayToHexString(data));
 
 		Handshake hs = Handshake.parse(ByteBuffer.wrap(data));
     String hashInfo = hs.getHexInfoHash();
@@ -379,7 +383,7 @@ public class ConnectionHandler implements Runnable {
 	private void sendHandshake(Socket socket, byte[] infoHash) throws IOException {
 		OutputStream os = socket.getOutputStream();
     byte[] bytes = Handshake.craft(infoHash, this.id.getBytes(Torrent.BYTE_ENCODING)).getBytes();
-    logger.trace("Send handshake: " + Torrent.byteArrayToHexString(bytes));
+    logger.trace("[{}] send handshake: {}", this.id, Torrent.byteArrayToHexString(bytes));
     os.write(bytes);
 	}
 
@@ -439,7 +443,7 @@ public class ConnectionHandler implements Runnable {
 		private final ConnectionHandler handler;
 		private final SharingPeer peer;
 
-		private ConnectorTask(ConnectionHandler handler, SharingPeer peer) {
+    private ConnectorTask(ConnectionHandler handler, SharingPeer peer) {
 			this.handler = handler;
 			this.peer = peer;
 		}
@@ -451,17 +455,17 @@ public class ConnectionHandler implements Runnable {
 				new InetSocketAddress(this.peer.getIp(), this.peer.getPort());
 
 			try {
-				logger.info("Connecting to {}...", this.peer);
+				logger.trace("[{}] connecting to {}...", this.handler.id, this.peer);
 				socket.connect(address, 3*1000);
 
-				this.handler.sendHandshake(socket, this.peer.getTorrent().getInfoHash());
+				this.handler.sendHandshake(socket, peer.getTorrent().getInfoHash());
 				Handshake hs = this.handler.validateHandshake(socket,
 					(this.peer.hasPeerId()
 						 ? this.peer.getPeerId().array()
 						 : null));
-				logger.info("Handshaked with {}, peer ID is {}.",
-					this.peer, Torrent.byteArrayToHexString(hs.getPeerId()));
-				this.handler.fireNewPeerConnection(socket, hs.getPeerId(), this.peer.getTorrent().getHexInfoHash());
+				logger.trace("[{}] handshaked with {}, peer ID is {}.", new Object[] {this.handler.id, this.peer.toString(), Torrent.byteArrayToHexString(hs.getPeerId())});
+
+				this.handler.fireNewPeerConnection(socket, hs.getPeerId(), peer.getTorrent().getHexInfoHash());
 			} catch (IOException ioe) {
 				try { socket.close(); } catch (IOException e) { }
 				this.handler.fireFailedConnection(this.peer, ioe);
@@ -470,5 +474,5 @@ public class ConnectionHandler implements Runnable {
 				this.handler.fireFailedConnection(this.peer, pe);
 			}
 		}
-	};
+	}
 }

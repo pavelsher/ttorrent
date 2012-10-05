@@ -25,6 +25,9 @@ import java.net.URI;
 import java.net.UnknownHostException;
 import java.net.UnknownServiceException;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * BitTorrent announce sub-system.
@@ -51,8 +54,8 @@ public class Announce implements Runnable {
 
 	/** The tiers of tracker clients matching the tracker URIs defined in the
 	 * torrent. */
-	private final List<List<TrackerClient>> clients;
-	private final Set<TrackerClient> allClients;
+	private final ConcurrentMap<String, TrackerClient> clients;
+	private final Collection<SharedTorrent> torrents;
 
 	/** Announce thread and control. */
 	private Thread thread;
@@ -62,69 +65,29 @@ public class Announce implements Runnable {
 	/** Announce interval. */
 	private int interval;
 
-	private int currentTier;
-	private int currentClient;
-
 	/**
 	 * Initialize the base announce class members for the announcer.
 	 *
-	 * @param torrent The torrent we're announcing about.
 	 * @param peer Our peer specification.
 	 */
-	public Announce(SharedTorrent torrent, Peer peer) {
+	public Announce(Peer peer) {
 		this.peer = peer;
-		this.clients = new ArrayList<List<TrackerClient>>();
-		this.allClients = new HashSet<TrackerClient>();
-
-		/**
-		 * Build the tiered structure of tracker clients mapping to the
-		 * trackers of the torrent.
-		 */
-
-		for (List<URI> tier : torrent.getAnnounceList()) {
-			ArrayList<TrackerClient> tierClients = new ArrayList<TrackerClient>();
-			for (URI tracker : tier) {
-				try {
-					TrackerClient client = this.createTrackerClient(torrent,
-						peer, tracker);
-
-					tierClients.add(client);
-					this.allClients.add(client);
-				} catch (Exception e) {
-					logger.warn("Will not announce on {}: {}!",
-						tracker,
-						e.getMessage() != null
-							? e.getMessage()
-							: e.getClass().getSimpleName());
-				}
-			}
-
-			// Shuffle the list of tracker clients once on creation.
-			Collections.shuffle(tierClients);
-
-			// Tier is guaranteed to be non-empty by
-			// Torrent#parseAnnounceInformation(), so we can add it safely.
-			clients.add(tierClients);
-		}
+		this.clients = new ConcurrentHashMap<String, TrackerClient>();
+    this.torrents = new CopyOnWriteArrayList<SharedTorrent>();
 
 		this.thread = null;
-		this.currentTier = 0;
-		this.currentClient = 0;
-
-		logger.info("Initialized announce sub-system with {} trackers on {}.",
-			new Object[] { torrent.getTrackerCount(), torrent });
 	}
 
-	/**
-	 * Register a new announce response listener.
-	 *
-	 * @param listener The listener to register on this announcer events.
-	 */
-	public void register(AnnounceResponseListener listener) {
-		for (TrackerClient client : this.allClients) {
-			client.register(listener);
-		}
-	}
+  public void addTorrent(SharedTorrent torrent, AnnounceResponseListener listener) throws UnknownServiceException, UnknownHostException {
+    this.torrents.add(torrent);
+    URI trackerUrl = torrent.getAnnounceList().get(0).get(0);
+    TrackerClient client = this.clients.get(trackerUrl.toString());
+    if (client == null) {
+      client = this.createTrackerClient(peer, trackerUrl);
+      client.register(listener);
+      this.clients.put(trackerUrl.toString(), client);
+    }
+  }
 
 	/**
 	 * Start the announce request thread.
@@ -173,7 +136,7 @@ public class Announce implements Runnable {
 		if (this.thread != null && this.thread.isAlive()) {
 			this.thread.interrupt();
 
-			for (TrackerClient client : this.allClients) {
+			for (TrackerClient client : this.clients.values()) {
 				client.close();
 			}
 
@@ -215,12 +178,12 @@ public class Announce implements Runnable {
 
 		while (!this.stop) {
 			try {
-				this.getCurrentTrackerClient().announce(event, false);
-				this.promoteCurrentTrackerClient();
+        for (SharedTorrent torrent: this.torrents) {
+          this.getCurrentTrackerClient(torrent).announce(event, false, torrent);
+        }
 				event = AnnounceRequestMessage.RequestEvent.NONE;
 			} catch (AnnounceException ae) {
 				logger.warn(ae.getMessage());
-				this.moveToNextTrackerClient();
 			}
 
 			try {
@@ -243,7 +206,9 @@ public class Announce implements Runnable {
 			}
 
 			try {
-				this.getCurrentTrackerClient().announce(event, true);
+        for (SharedTorrent torrent: this.torrents) {
+          this.getCurrentTrackerClient(torrent).announce(event, true, torrent);
+        }
 			} catch (AnnounceException ae) {
 				logger.warn(ae.getMessage());
 			}
@@ -253,20 +218,19 @@ public class Announce implements Runnable {
 	/**
 	 * Create a {@link TrackerClient} annoucing to the given tracker address.
 	 *
-	 * @param torrent The torrent the tracker client will be announcing for.
-	 * @param peer The peer the tracker client will announce on behalf of.
-	 * @param tracker The tracker address as a {@link URI}.
-	 * @throws UnknownHostException If the tracker address is invalid.
+	 *
+   * @param peer The peer the tracker client will announce on behalf of.
+   * @param tracker The tracker address as a {@link java.net.URI}.
+   * @throws UnknownHostException If the tracker address is invalid.
 	 * @throws UnknownServiceException If the tracker protocol is not supported.
 	 */
-	private TrackerClient createTrackerClient(SharedTorrent torrent, Peer peer,
-		URI tracker) throws UnknownHostException, UnknownServiceException {
+	private TrackerClient createTrackerClient(Peer peer, URI tracker) throws UnknownHostException, UnknownServiceException {
 		String scheme = tracker.getScheme();
 
 		if ("http".equals(scheme) || "https".equals(scheme)) {
-			return new HTTPTrackerClient(torrent, peer, tracker);
+			return new HTTPTrackerClient(peer, tracker);
 		} else if ("udp".equals(scheme)) {
-			return new UDPTrackerClient(torrent, peer, tracker);
+			return new UDPTrackerClient(peer, tracker);
 		}
 
 		throw new UnknownServiceException(
@@ -276,82 +240,11 @@ public class Announce implements Runnable {
 	/**
 	 * Returns the current tracker client used for announces.
 	 */
-	public TrackerClient getCurrentTrackerClient() {
-		return this.clients
-			.get(this.currentTier)
-			.get(this.currentClient);
+	public TrackerClient getCurrentTrackerClient(SharedTorrent torrent) {
+		return this.clients.get(torrent.getAnnounceList().get(0).get(0).toString());
 	}
 
-	/**
-	 * Promote the current tracker client to the top of its tier.
-	 *
-	 * <p>
-	 * As defined by BEP#0012, when communication with a tracker is successful,
-	 * it should be moved to the front of its tier.
-	 * </p>
-	 *
-	 * <p>
-	 * The index of the currently used {@link TrackerClient} is reset to 0 to
-	 * reflect this change.
-	 * </p>
-	 */
-	private void promoteCurrentTrackerClient() {
-		logger.trace("Promoting current tracker client for {} " +
-			"(tier {}, position {} -> 0).",
-			new Object[] {
-				this.getCurrentTrackerClient().getTrackerURI(),
-				this.currentTier,
-				this.currentClient
-			});
-
-		Collections.swap(this.clients.get(this.currentTier),
-			this.currentClient, 0);
-		this.currentClient = 0;
-	}
-
-	/**
-	 * Move to the next tracker client.
-	 *
-	 * <p>
-	 * If no more trackers are available in the current tier, move to the next
-	 * tier. If we were on the last tier, restart from the first tier.
-	 * </p>
-	 *
-	 * <p>
-	 * By design no empty tier can be in the tracker list structure so we don't
-	 * need to check for empty tiers here.
-	 * </p>
-	 */
-	private void moveToNextTrackerClient() {
-		int tier = this.currentTier;
-		int client = this.currentClient + 1;
-
-		if (client >= this.clients.get(tier).size()) {
-			client = 0;
-
-			tier++;
-
-			if (tier >= this.clients.size()) {
-				tier = 0;
-			}
-		}
-
-		if (tier != this.currentTier ||
-			client != this.currentClient) {
-			this.currentTier = tier;
-			this.currentClient = client;
-
-			logger.debug("Switched to tracker client for {} " +
-				"(tier {}, position {}).",
-				new Object[] {
-					this.getCurrentTrackerClient().getTrackerURI(),
-					this.currentTier,
-					this.currentClient
-				});
-		}
-	}
-
-	/**
+  /**
 	 * Stop the announce thread.
 	 *
 	 * @param hard Whether to force stop the announce thread or not, i.e. not

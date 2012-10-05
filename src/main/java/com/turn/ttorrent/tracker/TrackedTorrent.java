@@ -209,13 +209,11 @@ public class TrackedTorrent implements TorrentHash {
 	public TrackedPeer update(RequestEvent event, ByteBuffer peerId,
 		String hexPeerId, String ip, int port, long uploaded, long downloaded,
 		long left) throws UnsupportedEncodingException {
-		TrackedPeer peer;
+		TrackedPeer peer = null;
 		TrackedPeer.PeerState state = TrackedPeer.PeerState.UNKNOWN;
 
 		if (RequestEvent.STARTED.equals(event)) {
-			peer = new TrackedPeer(this, ip, port, peerId);
-			state = TrackedPeer.PeerState.STARTED;
-			this.addPeer(peer);
+      state = TrackedPeer.PeerState.STARTED;
 		} else if (RequestEvent.STOPPED.equals(event)) {
 			peer = this.removePeer(hexPeerId);
 			state = TrackedPeer.PeerState.STOPPED;
@@ -229,7 +227,11 @@ public class TrackedTorrent implements TorrentHash {
 			throw new IllegalArgumentException("Unexpected announce event type!");
 		}
 
-		peer.update(state, uploaded, downloaded, left);
+    if (peer == null) {
+      peer = new TrackedPeer(this, ip, port, peerId);
+      this.addPeer(peer);
+    }
+    peer.update(state, uploaded, downloaded, left);
 		return peer;
 	}
 
