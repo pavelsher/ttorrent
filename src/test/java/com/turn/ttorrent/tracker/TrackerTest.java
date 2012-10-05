@@ -50,18 +50,6 @@ public class TrackerTest extends TestCase {
 
       leech.download();
 
-      new WaitFor() {
-        @Override
-        protected boolean condition() {
-          return tt.getPeers().size() == 2;
-        }
-      };
-
-      Map<String,TrackedPeer> peers = tt.getPeers();
-      assertEquals(2, peers.size());
-      assertEquals(1, tt.seeders());
-      assertEquals(1, tt.leechers());
-
       waitForFileInDir(downloadDir, "file1.jar");
     } finally {
       leech.stop(true);
