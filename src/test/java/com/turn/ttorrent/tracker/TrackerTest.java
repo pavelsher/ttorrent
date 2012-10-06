@@ -156,7 +156,6 @@ public class TrackerTest extends TestCase {
 
   }
 
-  @Test(enabled = false)
   public void test_announce() throws IOException, NoSuchAlgorithmException {
     assertEquals(0, this.tracker.getTrackedTorrents().size());
 
