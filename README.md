@@ -74,13 +74,13 @@ usage message on the console when invoked with the ``-h`` command-line flag.
 Client client = new Client(
   // This is the interface the client will listen on (you might need something
   // else than localhost here).
-  InetAddress.getLocalHost(),
+  InetAddress.getLocalHost());
 
-  // Load the torrent from the torrent file and use the given
-  // output directory. Partials downloads are automatically recovered.
-  SharedTorrent.fromFile(
-    new File("/path/to/your.torrent"),
-    new File("/path/to/output/directory")));
+// Load the torrent from the torrent file and use the given
+// output directory. Partials downloads are automatically recovered.
+client.addTorrent(SharedTorrent.fromFile(
+                      new File("/path/to/your.torrent"),
+                      new File("/path/to/output/directory")));
 
 // At this point, can you either call download() to download the torrent and
 // stop immediately after...
@@ -90,10 +90,8 @@ client.download();
 // client.share(3600);
 // Which would seed the torrent for an hour after the download is complete.
 
-// At any time you can call client.stop() to interrupt the download.
-
-// When you're done, call client.finish() to close everything up:
-client.finish();
+// When you're done, call client.stop(true) to close everything up:
+client.stop(true);
 ```
 
 #### Tracker code
