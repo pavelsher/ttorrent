@@ -14,6 +14,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.URISyntaxException;
 import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
 import java.util.Map;
@@ -29,6 +30,7 @@ public class TrackerTest extends TestCase {
   protected void setUp() throws Exception {
     super.setUp();
     tempFiles = new TempFiles();
+    Torrent.setHashingThreadsCount(1);
     startTracker();
   }
 
@@ -153,7 +155,34 @@ public class TrackerTest extends TestCase {
       seeder.stop(true);
       leech.stop(true);
     }
+  }
 
+  public void large_file_download() throws IOException, URISyntaxException, NoSuchAlgorithmException, InterruptedException {
+    this.tracker.setAcceptForeignTorrents(true);
+
+    File tempFile = tempFiles.createTempFile(200 * 1024 * 1024);
+
+    Torrent torrent = Torrent.create(tempFile, this.tracker.getAnnounceUrl().toURI(), "Test");
+    File torrentFile = new File(tempFile.getParentFile(), tempFile.getName() + ".torrent");
+    torrent.save(torrentFile);
+
+    Client seeder = createClient();
+    seeder.addTorrent(SharedTorrent.fromFile(torrentFile, tempFile.getParentFile(), true));
+
+    final File downloadDir = tempFiles.createTempDir();
+    Client leech = createClient();
+    leech.addTorrent(SharedTorrent.fromFile(torrentFile, downloadDir, true));
+
+    try {
+      seeder.share();
+      leech.download();
+
+      waitForFileInDir(downloadDir, tempFile.getName());
+      assertEquals(tempFile.length(), new File(downloadDir, tempFile.getName()).length());
+    } finally {
+      seeder.stop(true);
+      leech.stop(true);
+    }
   }
 
   public void test_announce() throws IOException, NoSuchAlgorithmException {
@@ -163,35 +192,6 @@ public class TrackerTest extends TestCase {
 
     assertEquals(1, this.tracker.getTrackedTorrents().size());
   }
-
-/*
-  public void multi_torrent_client_registers_in_tracker() throws IOException, NoSuchAlgorithmException {
-    this.tracker.setAcceptForeignTorrents(true);
-
-    MultiTorrentClient mtc = new MultiTorrentClient(InetAddress.getLocalHost());
-    mtc.start();
-
-    try {
-      File torrentFile = new File(TEST_RESOURCES + "/torrents", "file1.jar.torrent");
-      File parentFiles = new File(TEST_RESOURCES + "/parentFiles");
-      ClientSharedTorrent torrent = ClientSharedTorrent.fromFile(torrentFile, parentFiles, false);
-      mtc.addTorrent(torrent);
-      mtc.share(torrent.getHexInfoHash());
-
-      waitForSeeder(torrent.getInfoHash());
-
-      Collection<TrackedTorrent> trackedTorrents = this.tracker.getTrackedTorrents();
-      assertEquals(1, trackedTorrents.size());
-      final TrackedTorrent tt = trackedTorrents.iterator().next();
-
-      Map<String,TrackedPeer> peers = tt.getPeers();
-      assertEquals(1, peers.size());
-      assertEquals(1, tt.seeders());
-    } finally {
-      mtc.stop();
-    }
-  }
-*/
 
   private void waitForSeeder(final byte[] torrentHash) {
     new WaitFor() {

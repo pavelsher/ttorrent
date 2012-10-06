@@ -76,7 +76,7 @@ public class SharedTorrent extends Torrent implements PeerActivityListener {
 	private Piece[] pieces;
 	private SortedSet<Piece> rarest;
 	private BitSet completedPieces;
-	private BitSet requestedPieces;
+	private final BitSet requestedPieces;
 
   private volatile ClientState clientState = ClientState.WAITING;
 	
@@ -290,8 +290,8 @@ public class SharedTorrent extends Torrent implements PeerActivityListener {
 		if (this.isInitialized()) {
 			throw new IllegalStateException("Torrent was already initialized!");
 		}
-		
-		if (multiThreadHash) {
+
+    if (multiThreadHash) {
 			hashMultiThread();
 		} else {
 			hashSingleThread();
@@ -307,14 +307,17 @@ public class SharedTorrent extends Torrent implements PeerActivityListener {
 			});
 		this.initialized = true;
 	}
-	
-	private void hashMultiThread() throws InterruptedException, IOException {
-		int nPieces = (int) (Math.ceil(
-				(double)this.getSize() / this.pieceLength));
-		this.pieces = new Piece[nPieces];
-		this.completedPieces = new BitSet(nPieces);
 
-		this.piecesHashes.clear();
+  private void initPieces() {
+    int nPieces = (int) (Math.ceil(
+        (double)this.getSize() / this.pieceLength));
+    this.pieces = new Piece[nPieces];
+    this.completedPieces = new BitSet(nPieces);
+    this.piecesHashes.clear();
+  }
+
+  private void hashMultiThread() throws InterruptedException, IOException {
+    initPieces();
 
 		ExecutorService executor = Executors.newFixedThreadPool(
 			getHashingThreadsCount());
@@ -367,14 +370,9 @@ public class SharedTorrent extends Torrent implements PeerActivityListener {
 	}
 	
 	private void hashSingleThread() throws InterruptedException, IOException {
-		int nPieces = (int) (Math.ceil(
-				(double)this.getSize() / this.pieceLength));
-		this.pieces = new Piece[nPieces];
-		this.completedPieces = new BitSet(nPieces);
+    initPieces();
 
-		this.piecesHashes.clear();
-
-		List<Piece> results = new LinkedList<Piece>();
+    List<Piece> results = new LinkedList<Piece>();
 
 		logger.debug("Analyzing local data for {} with {} threads...",
 			this.getName(), getHashingThreadsCount());
