@@ -89,6 +89,10 @@ public class Announce implements Runnable {
     }
   }
 
+  public void removeTorrent(SharedTorrent torrent) {
+    this.torrents.remove(torrent);
+  }
+
 	/**
 	 * Start the announce request thread.
 	 */

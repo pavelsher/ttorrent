@@ -16,37 +16,24 @@
 package com.turn.ttorrent.client;
 
 import com.turn.ttorrent.bcodec.InvalidBEncodingException;
-import com.turn.ttorrent.common.Torrent;
-import com.turn.ttorrent.common.protocol.PeerMessage;
 import com.turn.ttorrent.client.peer.PeerActivityListener;
 import com.turn.ttorrent.client.peer.SharingPeer;
-import com.turn.ttorrent.client.storage.TorrentByteStorage;
-import com.turn.ttorrent.client.storage.FileStorage;
 import com.turn.ttorrent.client.storage.FileCollectionStorage;
+import com.turn.ttorrent.client.storage.FileStorage;
+import com.turn.ttorrent.client.storage.TorrentByteStorage;
+import com.turn.ttorrent.common.Torrent;
+import com.turn.ttorrent.common.protocol.PeerMessage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.BitSet;
-import java.util.Collections;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Random;
-import java.util.SortedSet;
-import java.util.TreeSet;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.*;
+import java.util.concurrent.*;
 
 
 /**
@@ -90,6 +77,8 @@ public class SharedTorrent extends Torrent implements PeerActivityListener {
 	private SortedSet<Piece> rarest;
 	private BitSet completedPieces;
 	private BitSet requestedPieces;
+
+  private volatile ClientState clientState = ClientState.WAITING;
 	
 	private boolean multiThreadHash;
 
@@ -296,6 +285,8 @@ public class SharedTorrent extends Torrent implements PeerActivityListener {
 	 * </p>
 	 */
 	public synchronized void init() throws InterruptedException, IOException {
+    clientState = ClientState.VALIDATING;
+
 		if (this.isInitialized()) {
 			throw new IllegalStateException("Torrent was already initialized!");
 		}
@@ -544,7 +535,15 @@ public class SharedTorrent extends Torrent implements PeerActivityListener {
 		return this.isComplete() && this.bucket.isFinished();
 	}
 
-	/**
+  public ClientState getClientState() {
+    return this.clientState;
+  }
+
+  public void setClientState(ClientState clientState) {
+    this.clientState = clientState;
+  }
+
+  /**
 	 * Return the completion percentage of this torrent.
 	 *
 	 * <p>

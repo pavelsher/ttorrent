@@ -66,7 +66,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *
  * @author mpetazzoni
  */
-public class Client extends Observable implements Runnable,
+public class Client implements Runnable,
 	AnnounceResponseListener, CommunicationListener, PeerActivityListener {
 
 	private static final Logger logger =
@@ -87,16 +87,7 @@ public class Client extends Observable implements Runnable,
 	/** Default data output directory. */
 	private static final String DEFAULT_OUTPUT_DIRECTORY = "/tmp";
 
-	public enum ClientState {
-		WAITING,
-		VALIDATING,
-		SHARING,
-		SEEDING,
-		ERROR,
-		DONE
-	}
-
-	private static final String BITTORRENT_ID_PREFIX = "-TO0042-";
+  private static final String BITTORRENT_ID_PREFIX = "-TO0042-";
 
 	private Peer self;
 
@@ -105,11 +96,10 @@ public class Client extends Observable implements Runnable,
 	private long seed;
 
 	private ConnectionHandler service;
-	private Collection<SharingPeer> peers;
+	private final Collection<SharingPeer> peers;
 
   private Announce announce;
-  private ConcurrentMap<String, SharedTorrent> torrents;
- 	private ConcurrentMap<String, ClientState> torrentsState;
+  private final ConcurrentMap<String, SharedTorrent> torrents;
 
 	private Random random;
 
@@ -120,7 +110,6 @@ public class Client extends Observable implements Runnable,
    */
 	public Client(InetAddress address) throws IOException {
     this.torrents = new ConcurrentHashMap<String, SharedTorrent>();
-    this.torrentsState = new ConcurrentHashMap<String, ClientState>();
 
 		String id = Client.BITTORRENT_ID_PREFIX + UUID.randomUUID()
 			.toString().split("-")[4];
@@ -162,17 +151,23 @@ public class Client extends Observable implements Runnable,
     }
 
     this.torrents.put(torrent.getHexInfoHash(), torrent);
-    setState(ClientState.VALIDATING, torrent.getHexInfoHash());
 
 		// Initial completion test
 		if (torrent.isComplete()) {
-      this.setState(ClientState.SEEDING, torrent.getHexInfoHash());
+      torrent.setClientState(ClientState.SEEDING);
 		} else {
-			this.setState(ClientState.SHARING, torrent.getHexInfoHash());
+      torrent.setClientState(ClientState.SHARING);
 		}
 
     this.announce.addTorrent(torrent, this);
   }
+
+  public void removeTorrent(SharedTorrent torrent) {
+    this.announce.removeTorrent(torrent);
+    this.torrents.remove(torrent.getHexInfoHash());
+    torrent.setClientState(ClientState.DONE);
+  }
+
 
 	/**
 	 * Get this client's peer specification.
@@ -195,35 +190,7 @@ public class Client extends Observable implements Runnable,
 		return new HashSet<SharingPeer>(this.peers);
 	}
 
-	/**
-	 * Change this client's state and notify its observers.
-	 *
-	 * <p>
-	 * If the state has changed, this client's observers will be notified.
-	 * </p>
-	 *
-	 * @param state The new client state.
-	 */
-	private synchronized void setState(ClientState state, String hexInfoHash) {
-    ClientState curState = this.torrentsState.get(hexInfoHash);
-
-		if (curState != state) {
-			this.setChanged();
-		}
-
-    this.torrentsState.put(hexInfoHash, state);
-		this.notifyObservers(state);
-	}
-
-	/**
-	 * Return the current state of this BitTorrent client.
-	 */
-	public ClientState getState(String hexInfoHash) {
-    ClientState clientState = this.torrentsState.get(hexInfoHash);
-    return clientState == null ? ClientState.WAITING : clientState;
-	}
-
-	/**
+  /**
 	 * Download the torrent without seeding after completion.
 	 */
 	public void download() {
@@ -353,7 +320,7 @@ public class Client extends Observable implements Runnable,
 		}
 
 		logger.debug("Stopping BitTorrent client connection service " +
-				"and announce threads...");
+        "and announce threads...");
 		this.service.stop();
 
 		// Close all peer connections
@@ -375,9 +342,9 @@ public class Client extends Observable implements Runnable,
     for (SharedTorrent torrent: this.torrents.values()) {
       torrent.close();
       if (torrent.isFinished()) {
-        setState(ClientState.DONE, torrent.getHexInfoHash());
+        torrent.setClientState(ClientState.DONE);
       } else {
-        setState(ClientState.ERROR, torrent.getHexInfoHash());
+        torrent.setClientState(ClientState.ERROR);
       }
     }
 
@@ -407,7 +374,7 @@ public class Client extends Observable implements Runnable,
     for (SharedTorrent torrent: this.torrents.values()) {
       logger.info("{} {}/{} pieces ({}%) [{}/{}] with {}/{} peers at {}/{} kB/s.",
     			new Object[] {
-    				this.getState(torrent.getHexInfoHash()).name(),
+    				torrent.getClientState().name(),
     				torrent.getCompletedPieces().cardinality(),
     				torrent.getPieceCount(),
     				String.format("%.2f", torrent.getCompletion()),
@@ -799,11 +766,6 @@ public class Client extends Observable implements Runnable,
 				for (SharingPeer remote : getConnectedPeers()) {
 					remote.send(have);
 				}
-
-				// Force notify after each piece is completed to propagate download
-				// completion information (or new seeding state)
-				this.setChanged();
-				this.notifyObservers(this.getState(torrent.getHexInfoHash()));
 			}
 
 			if (torrent.isComplete()) {
@@ -821,7 +783,7 @@ public class Client extends Observable implements Runnable,
 						"tracker: {}", ae.getMessage());
 				}
 
-        this.setState(ClientState.SEEDING, torrent.getHexInfoHash());
+        torrent.setClientState(ClientState.SEEDING);
 
         if (this.seed == 0) {
           peer.unbind(true);
@@ -835,11 +797,11 @@ public class Client extends Observable implements Runnable,
     peer.reset();
 
     logger.debug("Peer {} disconnected, [{}/{}].",
- 				new Object[] {
- 					peer,
- 					getConnectedPeers().size(),
- 					this.peers.size()
- 				});
+        new Object[]{
+            peer,
+            getConnectedPeers().size(),
+            this.peers.size()
+        });
 	}
 
 	@Override
@@ -847,7 +809,7 @@ public class Client extends Observable implements Runnable,
 		logger.error("I/O problem occured when reading or writing piece " +
 				"data for peer {}: {}.", peer, ioe.getMessage());
 		this.stop();
-		this.setState(ClientState.ERROR, peer.getTorrent().getHexInfoHash());
+		peer.getTorrent().setClientState(ClientState.ERROR);
 	}
 
 
@@ -990,7 +952,7 @@ public class Client extends Observable implements Runnable,
 				new Thread(new ClientShutdown(c, null)));
 
 			c.share();
-			if (ClientState.ERROR.equals(c.getState(torrent.getHexInfoHash()))) {
+			if (ClientState.ERROR.equals(torrent.getClientState())) {
 				System.exit(1);
 			}
 		} catch (Exception e) {
