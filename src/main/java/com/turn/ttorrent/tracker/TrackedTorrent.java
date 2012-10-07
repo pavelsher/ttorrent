@@ -249,7 +249,7 @@ public class TrackedTorrent implements TorrentHash {
 		// Extract answerPeers random peers
 		List<TrackedPeer> candidates =
 			new LinkedList<TrackedPeer>(this.peers.values());
-		Collections.shuffle(peers);
+		Collections.shuffle(candidates);
 
 		int count = 0;
 		for (TrackedPeer candidate : candidates) {
