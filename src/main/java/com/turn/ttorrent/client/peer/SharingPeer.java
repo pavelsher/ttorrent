@@ -15,6 +15,13 @@
  */
 package com.turn.ttorrent.client.peer;
 
+import com.turn.ttorrent.client.Piece;
+import com.turn.ttorrent.client.SharedTorrent;
+import com.turn.ttorrent.common.Peer;
+import com.turn.ttorrent.common.protocol.PeerMessage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.net.Socket;
 import java.net.SocketException;
@@ -27,14 +34,6 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.turn.ttorrent.client.Piece;
-import com.turn.ttorrent.client.SharedTorrent;
-import com.turn.ttorrent.common.Peer;
-import com.turn.ttorrent.common.protocol.PeerMessage;
 
 
 /**
@@ -75,11 +74,11 @@ public class SharingPeer extends Peer implements MessageListener {
 
 	private static final int MAX_PIPELINED_REQUESTS = 5;
 
-	private boolean choking;
-	private boolean interesting;
+	private volatile boolean choking;
+	private volatile boolean interesting;
 
-	private boolean choked;
-	private boolean interested;
+	private volatile boolean choked;
+	private volatile boolean interested;
 
 	private SharedTorrent torrent;
 	private BitSet availablePieces;
@@ -89,10 +88,9 @@ public class SharingPeer extends Peer implements MessageListener {
 	private BlockingQueue<PeerMessage.RequestMessage> requests;
 
 	private PeerExchange exchange = null;
-	private Object exchangeLock;
+	private final Object exchangeLock;
 	private Rate download;
 	private Rate upload;
-	private boolean bound;
 	private SocketChannel socketChannel;
 
 	private Set<PeerActivityListener> listeners;
@@ -116,7 +114,6 @@ public class SharingPeer extends Peer implements MessageListener {
 
 		this.reset();
 		this.requestedPiece = null;
-		this.bound = false;
 	}
 
 	/**
@@ -145,16 +142,19 @@ public class SharingPeer extends Peer implements MessageListener {
 	 * nor interesting.
 	 * </p>
 	 */
-	public synchronized void reset() {
-		this.choking = true;
-		this.interesting = false;
-		this.choked = true;
-		this.interested = false;
+	public void reset() {
+    synchronized (this) {
+      this.choking = true;
+      this.interesting = false;
+      this.choked = true;
+      this.interested = false;
+      this.requests = null;
+      this.lastRequestedOffset = 0;
+    }
 
-		this.exchange = null;
-
-		this.requests = null;
-		this.lastRequestedOffset = 0;
+    synchronized (this.exchangeLock) {
+      this.exchange = null;
+    }
 	}
 
 	/**
@@ -228,10 +228,8 @@ public class SharingPeer extends Peer implements MessageListener {
 	 *
 	 * @return A clone of the available pieces bit field from this peer.
 	 */
-	public BitSet getAvailablePieces() {
-		synchronized (this.availablePieces) {
-			return (BitSet)this.availablePieces.clone();
-		}
+	public synchronized BitSet getAvailablePieces() {
+    return (BitSet)this.availablePieces.clone();
 	}
 
 	/**
@@ -264,28 +262,18 @@ public class SharingPeer extends Peer implements MessageListener {
 	 * @param socket The connected socket for this peer.
 	 * @throws ClosedChannelException 
 	 */
-	public synchronized void bind(Socket socket) throws SocketException {
+	public void bind(Socket socket) throws SocketException {
 		this.unbind(true);
 
-		this.exchange = new PeerExchange(this, this.torrent, socket);
-		this.exchange.register(this);
+    synchronized (this.exchangeLock) {
+      this.exchange = new PeerExchange(this, this.torrent, socket);
+      this.exchange.register(this);
+    }
 
 		resetRates();
 	}
 
-	/**
-	 * Bind a socket channel to this peer, to allow it to send and receive messages in a non-blocking way.
-	 *
-	 * @param socket The connected socket for this peer.
-	 * @throws SocketException
-	 * @throws ClosedChannelException 
-	 */
-	public synchronized void bind(SocketChannel socketChannel) throws SocketException, ClosedChannelException {
-		this.exchange.register(this);
-		resetRates();
-	}
-	
-	public synchronized void resetRates() {
+  public synchronized void resetRates() {
 		this.download = new Rate();
 		this.download.reset();
 		
@@ -297,19 +285,12 @@ public class SharingPeer extends Peer implements MessageListener {
 	 * Tells whether this peer as an active connection through a peer exchange.
 	 */
 	public boolean isConnected() {
-		if (this.exchange == null) {
-			return this.bound;
-		}
 		synchronized (this.exchangeLock) {
 			return this.exchange != null && this.exchange.isConnected();
 		}
 	}
-	
-	public void setBound(boolean bound) {
-		this.bound = bound;
-	}
 
-	/**
+  /**
 	 * Unbind and disconnect this peer.
 	 *
 	 * <p>
@@ -355,16 +336,14 @@ public class SharingPeer extends Peer implements MessageListener {
 	 * exchange.
 	 */
 	public void send(PeerMessage message) throws IllegalStateException {
-		if (this.exchange != null) {
-			synchronized (this.exchangeLock) {
-				if (this.isConnected()) {
-					this.exchange.send(message);
-				}
-			}
-		} else {
-			this.fireNewMessage(message);
-		}
-	}
+    synchronized (this.exchangeLock) {
+      if (this.isConnected()) {
+        this.exchange.send(message);
+      }
+    }
+
+    this.fireNewMessage(message);
+  }
 
 	/**
 	 * Download the given piece from this peer.
@@ -520,37 +499,33 @@ public class SharingPeer extends Peer implements MessageListener {
 				PeerMessage.HaveMessage have = (PeerMessage.HaveMessage)msg;
 				Piece havePiece = this.torrent.getPiece(have.getPieceIndex());
 
-				synchronized (this.availablePieces) {
-					this.availablePieces.set(havePiece.getIndex());
-					logger.trace("Peer {} now has {} [{}/{}].",
-						new Object[] {
-							this,
-							havePiece,
-							this.availablePieces.cardinality(),
-							this.torrent.getPieceCount()
-						});
-				}
+        this.availablePieces.set(havePiece.getIndex());
+        logger.trace("Peer {} now has {} [{}/{}].",
+            new Object[] {
+                this,
+                havePiece,
+                this.availablePieces.cardinality(),
+                this.torrent.getPieceCount()
+            });
 
-				this.firePieceAvailabity(havePiece);
+        this.firePieceAvailabity(havePiece);
 				break;
 			case BITFIELD:
 				// Augment the hasPiece bit field from this BITFIELD message
 				PeerMessage.BitfieldMessage bitfield =
 					(PeerMessage.BitfieldMessage)msg;
 
-				synchronized (this.availablePieces) {
-					this.availablePieces = bitfield.getBitfield();
-					logger.trace("Recorded bitfield from {} with {} " +
-						"pieces(s) [{}/{}].",
-						new Object[] {
-							this,
-							bitfield.getBitfield().cardinality(),
-							this.availablePieces.cardinality(),
-							this.torrent.getPieceCount()
-						});
-				}
+        this.availablePieces = bitfield.getBitfield();
+        logger.trace("Recorded bitfield from {} with {} " +
+            "pieces(s) [{}/{}].",
+            new Object[] {
+                this,
+                bitfield.getBitfield().cardinality(),
+                this.availablePieces.cardinality(),
+                this.torrent.getPieceCount()
+            });
 
-				this.fireBitfieldAvailabity();
+        this.fireBitfieldAvailabity();
 				break;
 			case REQUEST:
 				PeerMessage.RequestMessage request =

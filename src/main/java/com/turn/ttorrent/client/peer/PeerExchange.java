@@ -83,7 +83,7 @@ class PeerExchange {
 	private IncomingThread in;
 	private OutgoingThread out;
 	private BlockingQueue<PeerMessage> sendQueue;
-	private boolean stop;
+	private volatile boolean stop;
 
 	/**
 	 * Initialize and start a new peer exchange.
