@@ -1,9 +1,7 @@
 package com.turn.ttorrent;
 
 import java.io.*;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 
 /**
  * @author Pavel.Sher
@@ -129,10 +127,9 @@ public class TempFiles {
   public void cleanup() {
     try {
       for (File file : myFilesToDelete) {
-        if (file.exists()) {
-          FileUtil.delete(file);
-        }
+        FileUtil.delete(file);
       }
+
       myFilesToDelete.clear();
     } finally {
       if (!myInsideShutdownHook) {

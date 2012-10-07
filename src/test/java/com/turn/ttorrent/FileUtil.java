@@ -12,14 +12,26 @@ public class FileUtil {
   }
 
   public static void delete(File file) {
+    if (file.isDirectory()) {
+      File[] files = file.listFiles();
+      for (File f: files) {
+        delete(f);
+      }
+    }
+    deleteFile(file);
+  }
+
+  private static boolean deleteFile(File file) {
+    if (!file.exists()) return false;
     for (int i=0; i<10; i++) {
-      if (file.delete()) break;
+      if (file.delete()) return true;
       try {
         Thread.sleep(1);
       } catch (InterruptedException e) {
         //
       }
     }
+    return false;
   }
 
   public static void writeFile(File file, String content) throws IOException {
