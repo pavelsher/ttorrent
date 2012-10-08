@@ -82,6 +82,7 @@ public class SharingPeer extends Peer implements MessageListener {
 
 	private SharedTorrent torrent;
 	private BitSet availablePieces;
+	private final Object availablePiecesLock;
 
 	private Piece requestedPiece;
 	private int lastRequestedOffset;
@@ -111,6 +112,7 @@ public class SharingPeer extends Peer implements MessageListener {
 		this.listeners = new HashSet<PeerActivityListener>();
 		this.availablePieces = new BitSet(this.torrent.getPieceCount());
 		this.exchangeLock = new Object();
+    this.availablePiecesLock = new Object();
 
 		this.reset();
 		this.requestedPiece = null;
@@ -228,9 +230,11 @@ public class SharingPeer extends Peer implements MessageListener {
 	 *
 	 * @return A clone of the available pieces bit field from this peer.
 	 */
-	public synchronized BitSet getAvailablePieces() {
-    return (BitSet)this.availablePieces.clone();
-	}
+	public BitSet getAvailablePieces() {
+    synchronized (this.availablePiecesLock) {
+      return (BitSet)this.availablePieces.clone();
+    }
+  }
 
 	/**
 	 * Returns the currently requested piece, if any.
@@ -499,14 +503,16 @@ public class SharingPeer extends Peer implements MessageListener {
 				PeerMessage.HaveMessage have = (PeerMessage.HaveMessage)msg;
 				Piece havePiece = this.torrent.getPiece(have.getPieceIndex());
 
-        this.availablePieces.set(havePiece.getIndex());
-        logger.trace("Peer {} now has {} [{}/{}].",
-            new Object[] {
-                this,
-                havePiece,
-                this.availablePieces.cardinality(),
-                this.torrent.getPieceCount()
-            });
+        synchronized (this.availablePiecesLock) {
+          this.availablePieces.set(havePiece.getIndex());
+          logger.trace("Peer {} now has {} [{}/{}].",
+              new Object[]{
+                  this,
+                  havePiece,
+                  this.availablePieces.cardinality(),
+                  this.torrent.getPieceCount()
+              });
+        }
 
         this.firePieceAvailabity(havePiece);
 				break;
@@ -515,18 +521,20 @@ public class SharingPeer extends Peer implements MessageListener {
 				PeerMessage.BitfieldMessage bitfield =
 					(PeerMessage.BitfieldMessage)msg;
 
-        this.availablePieces = bitfield.getBitfield();
-        logger.trace("Recorded bitfield from {} with {} " +
-            "pieces(s) [{}/{}].",
-            new Object[] {
-                this,
-                bitfield.getBitfield().cardinality(),
-                this.availablePieces.cardinality(),
-                this.torrent.getPieceCount()
-            });
+        synchronized (this.availablePiecesLock) {
+          this.availablePieces = bitfield.getBitfield();
+          logger.trace("Recorded bitfield from {} with {} " +
+              "pieces(s) [{}/{}].",
+              new Object[] {
+                  this,
+                  bitfield.getBitfield().cardinality(),
+                  this.availablePieces.cardinality(),
+                  this.torrent.getPieceCount()
+              });
+        }
 
         this.fireBitfieldAvailabity();
-				break;
+        break;
 			case REQUEST:
 				PeerMessage.RequestMessage request =
 					(PeerMessage.RequestMessage)msg;
