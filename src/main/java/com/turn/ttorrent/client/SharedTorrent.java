@@ -74,7 +74,7 @@ public class SharedTorrent extends Torrent implements PeerActivityListener {
 
 	private boolean initialized;
 	private Piece[] pieces;
-	private SortedSet<Piece> rarest;
+	private Set<Integer> rarest;
 	private BitSet completedPieces;
 	private final BitSet requestedPieces;
 
@@ -207,7 +207,7 @@ public class SharedTorrent extends Torrent implements PeerActivityListener {
 
 		this.initialized = false;
 		this.pieces = new Piece[0];
-		this.rarest = Collections.synchronizedSortedSet(new TreeSet<Piece>());
+		this.rarest = new HashSet<Integer>();
 		this.completedPieces = new BitSet();
 		this.requestedPieces = new BitSet();
 	}
@@ -638,9 +638,15 @@ public class SharedTorrent extends Torrent implements PeerActivityListener {
 
 		// Extract the RAREST_PIECE_JITTER rarest pieces from the interesting
 		// pieces of this peer.
-		for (Piece piece : this.rarest) {
+    List<Piece> rarest = new ArrayList<Piece>();
+		for (Integer pieceIdx : this.rarest) {
+      rarest.add(this.pieces[pieceIdx]);
+		}
+    Collections.sort(rarest);
+
+		for (Piece piece : rarest) {
 			if (interesting.get(piece.getIndex())) {
-				choice.add(piece);
+        choice.add(piece);
 				if (choice.size() == RAREST_PIECE_JITTER) {
 					break;
 				}
@@ -684,8 +690,7 @@ public class SharedTorrent extends Torrent implements PeerActivityListener {
 		}
 
 		piece.seenAt(peer);
-		this.rarest.remove(piece);
-		this.rarest.add(piece);
+		this.rarest.add(piece.getIndex());
 
 		logger.trace("Peer {} contributes {} piece(s) [{}/{}/{}].",
 			new Object[] {
@@ -734,8 +739,7 @@ public class SharedTorrent extends Torrent implements PeerActivityListener {
 		for (int i = availablePieces.nextSetBit(0); i >= 0;
 				i = availablePieces.nextSetBit(i+1)) {
 			this.pieces[i].seenAt(peer);
-			this.rarest.remove(this.pieces[i]);
-			this.rarest.add(this.pieces[i]);
+			this.rarest.add(i);
 		}
 
 		logger.trace("Peer {} contributes {} piece(s) [{}/{}/{}].",
@@ -819,8 +823,7 @@ public class SharedTorrent extends Torrent implements PeerActivityListener {
 		for (int i = availablePieces.nextSetBit(0); i >= 0;
 				i = availablePieces.nextSetBit(i+1)) {
 			this.pieces[i].noLongerAt(peer);
-			this.rarest.remove(this.pieces[i]);
-			this.rarest.add(this.pieces[i]);
+			this.rarest.add(i);
 		}
 
 		Piece requested = peer.getRequestedPiece();
