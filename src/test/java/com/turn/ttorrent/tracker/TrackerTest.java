@@ -16,8 +16,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URISyntaxException;
 import java.security.NoSuchAlgorithmException;
-import java.util.Collection;
-import java.util.Map;
+import java.util.*;
 
 @Test
 public class TrackerTest extends TestCase {
@@ -131,31 +130,65 @@ public class TrackerTest extends TestCase {
     }
   }
 
-  public void download_multiple_files() throws InterruptedException, NoSuchAlgorithmException, IOException {
+  public void download_multiple_files() throws IOException, NoSuchAlgorithmException, InterruptedException, URISyntaxException {
+    int numFiles = 10;
     this.tracker.setAcceptForeignTorrents(true);
-    assertEquals(0, this.tracker.getTrackedTorrents().size());
 
-    Client seeder = createClient();
-    seeder.addTorrent(completeTorrent("file1.jar.torrent"));
-    seeder.addTorrent(completeTorrent("file2.jar.torrent"));
-
+    final File srcDir = tempFiles.createTempDir();
     final File downloadDir = tempFiles.createTempDir();
 
+    Client seeder = createClient();
     Client leech = createClient();
-    leech.addTorrent(incompleteTorrent("file1.jar.torrent", downloadDir));
-    leech.addTorrent(incompleteTorrent("file2.jar.torrent", downloadDir));
 
     try {
       seeder.share();
+
+      final Set<String> names = new HashSet<String>();
+      List<File> filesToShare = new ArrayList<File>();
+      for (int i=0; i<numFiles; i++) {
+        File tempFile = tempFiles.createTempFile(513*1024);
+        File srcFile = new File(srcDir, tempFile.getName());
+        assertTrue(tempFile.renameTo(srcFile));
+
+        Torrent torrent = Torrent.create(srcFile, this.tracker.getAnnounceUrl().toURI(), "Test");
+        File torrentFile = new File(srcFile.getParentFile(), srcFile.getName() + ".torrent");
+        torrent.save(torrentFile);
+        filesToShare.add(srcFile);
+        names.add(srcFile.getName());
+      }
+
       leech.download();
 
-      waitForFileInDir(downloadDir, "file1.jar");
-      waitForFileInDir(downloadDir, "file2.jar");
+      for (File f: filesToShare) {
+        File torrentFile = new File(f.getParentFile(), f.getName() + ".torrent");
+        SharedTorrent st1 = SharedTorrent.fromFile(torrentFile, f.getParentFile(), true);
+        seeder.addTorrent(st1);
+        SharedTorrent st2 = SharedTorrent.fromFile(torrentFile, downloadDir, true);
+        leech.addTorrent(st2);
+      }
+
+      new WaitFor(120*1000, 100) {
+        @Override
+        protected boolean condition() {
+          return listFileNames(downloadDir).containsAll(names);
+        }
+      };
+
+      assertTrue(listFileNames(downloadDir).equals(names));
     } finally {
-      seeder.stop(true);
       leech.stop(true);
+      seeder.stop(true);
     }
   }
+
+  private Set<String> listFileNames(File downloadDir) {
+    Set<String> names = new HashSet<String>();
+    for (File f: downloadDir.listFiles()) {
+      names.add(f.getName());
+    }
+    return names;
+  }
+
 
   public void large_file_download() throws IOException, URISyntaxException, NoSuchAlgorithmException, InterruptedException {
     this.tracker.setAcceptForeignTorrents(true);

@@ -99,7 +99,7 @@ class PeerExchange {
 		this.socket = socket;
 
 		// Set the socket read timeout.
-		this.socket.setSoTimeout(PeerExchange.KEEP_ALIVE_FOR_MINUTES*60*1000);
+		this.socket.setSoTimeout(PeerExchange.KEEP_ALIVE_FOR_MINUTES * 60 * 1000);
 
 		this.listeners = new HashSet<MessageListener>();
 		this.sendQueue = new LinkedBlockingQueue<PeerMessage>();

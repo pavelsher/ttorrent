@@ -81,8 +81,7 @@ public class Client implements Runnable,
 	private static final int OPTIMISTIC_UNCHOKE_ITERATIONS = 3;
 
 	private static final int RATE_COMPUTATION_ITERATIONS = 2;
-	private static final int MAX_DOWNLOADERS_UNCHOKE = 4;
-	private static final int VOLUNTARY_OUTBOUND_CONNECTIONS = 20;
+	private static final int MAX_DOWNLOADERS_UNCHOKE = 10;
 
 	/** Default data output directory. */
 	private static final String DEFAULT_OUTPUT_DIRECTORY = "/tmp";
@@ -166,6 +165,7 @@ public class Client implements Runnable,
     this.announce.removeTorrent(torrent);
     this.torrents.remove(torrent.getHexInfoHash());
     torrent.setClientState(ClientState.DONE);
+    torrent.close();
   }
 
 
@@ -473,6 +473,10 @@ public class Client implements Runnable,
 	 * the download or upload rate we get from them.
 	 */
 	private Comparator<SharingPeer> getPeerRateComparator() {
+    if (this.seed == 0) {
+      return new SharingPeer.ULRateComparator();
+    }
+
     return new SharingPeer.DLRateComparator();
 	}
 
@@ -510,8 +514,9 @@ public class Client implements Runnable,
 	private synchronized void unchokePeers(boolean optimistic) {
 		// Build a set of all connected peers, we don't care about peers we're
 		// not connected to.
-    TreeSet<SharingPeer> bound = new TreeSet<SharingPeer>(this.getPeerRateComparator());
-    bound.addAll(getConnectedPeers());
+    List<SharingPeer> bound = new ArrayList<SharingPeer>(getConnectedPeers());
+    Collections.sort(bound, this.getPeerRateComparator());
+    Collections.reverse(bound);
 
     if (bound.size() == 0) {
       logger.trace("No connected peers, skipping unchoking.");
@@ -526,7 +531,7 @@ public class Client implements Runnable,
 
     // We're interested in the top downloaders first, so use a descending
     // set.
-    for (SharingPeer peer : bound.descendingSet()) {
+    for (SharingPeer peer : bound) {
       if (downloaders < Client.MAX_DOWNLOADERS_UNCHOKE) {
         // Unchoke up to MAX_DOWNLOADERS_UNCHOKE interested peers
         if (peer.isChoking()) {
@@ -536,10 +541,10 @@ public class Client implements Runnable,
 
           peer.unchoke();
         }
-      } else {
-        // Choke everybody else
-        choked.add(peer);
+        continue;
       }
+      // Choke everybody else
+      choked.add(peer);
     }
 
     // Actually choke all chosen peers (if any), except the eventual
@@ -615,9 +620,7 @@ public class Client implements Runnable,
 				//	   of connecting to peers that need to download
 				//     something), or we are a seeder but we're still
 				//     willing to initiate some out bound connections.
-				if (match.isConnected() ||
-					(this.isSeed(hexInfoHash) && getConnectedPeers().size() >=
-						Client.VOLUNTARY_OUTBOUND_CONNECTIONS)) {
+				if (match.isConnected() || this.isSeed(hexInfoHash)) {
 					return;
 				}
 
@@ -784,9 +787,9 @@ public class Client implements Runnable,
 				}
 
         torrent.setClientState(ClientState.SEEDING);
-
-        if (this.seed == 0) {
-          peer.unbind(true);
+        if (seed == 0) {
+          peer.unbind(false);
+          this.announce.removeTorrent(torrent);
         }
       }
 		}
@@ -807,9 +810,9 @@ public class Client implements Runnable,
 	@Override
 	public void handleIOException(SharingPeer peer, IOException ioe) {
 		logger.error("I/O problem occured when reading or writing piece " +
-				"data for peer {}: {}.", peer, ioe.getMessage());
-		this.stop();
-		peer.getTorrent().setClientState(ClientState.ERROR);
+        "data for peer {}: {}.", peer, ioe.getMessage());
+
+    peer.unbind(true);
 	}
 
 
