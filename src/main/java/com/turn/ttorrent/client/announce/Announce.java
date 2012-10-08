@@ -24,7 +24,8 @@ import org.slf4j.LoggerFactory;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.net.UnknownServiceException;
-import java.util.*;
+import java.util.Collection;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -183,7 +184,10 @@ public class Announce implements Runnable {
 		while (!this.stop) {
 			try {
         for (SharedTorrent torrent: this.torrents) {
-          this.getCurrentTrackerClient(torrent).announce(event, false, torrent);
+          TrackerClient trackerClient = this.getCurrentTrackerClient(torrent);
+          if (trackerClient != null) {
+            trackerClient.announce(event, false, torrent);
+          }
         }
 				event = AnnounceRequestMessage.RequestEvent.NONE;
 			} catch (AnnounceException ae) {
@@ -245,7 +249,11 @@ public class Announce implements Runnable {
 	 * Returns the current tracker client used for announces.
 	 */
 	public TrackerClient getCurrentTrackerClient(SharedTorrent torrent) {
-		return this.clients.get(torrent.getAnnounceList().get(0).get(0).toString());
+    List<List<URI>> announceList = torrent.getAnnounceList();
+    if (announceList.size() == 0) return null;
+    List<URI> uris = announceList.get(0);
+    if (uris.size() == 0) return null;
+    return this.clients.get(uris.get(0).toString());
 	}
 
   /**
