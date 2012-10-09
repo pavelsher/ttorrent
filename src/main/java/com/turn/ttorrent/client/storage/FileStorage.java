@@ -15,15 +15,15 @@
  */
 package com.turn.ttorrent.client.storage;
 
+import org.apache.commons.io.FileUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-
-import org.apache.commons.io.FileUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 
 /**
@@ -104,7 +104,7 @@ public class FileStorage implements TorrentByteStorage {
 	}
 
 	@Override
-	public int read(ByteBuffer buffer, long offset) throws IOException {
+	public synchronized int read(ByteBuffer buffer, long offset) throws IOException {
 		int requested = buffer.remaining();
 
 		if (offset + requested > this.size) {
@@ -120,7 +120,7 @@ public class FileStorage implements TorrentByteStorage {
 	}
 
 	@Override
-	public int write(ByteBuffer buffer, long offset) throws IOException {
+	public synchronized int write(ByteBuffer buffer, long offset) throws IOException {
 		int requested = buffer.remaining();
 
 		if (offset + requested > this.size) {
@@ -166,7 +166,7 @@ public class FileStorage implements TorrentByteStorage {
 	}
 
 	@Override
-	public boolean isFinished() {
+	public synchronized boolean isFinished() {
 		return this.current.equals(this.target);
 	}
 }

@@ -596,15 +596,14 @@ public class Client implements Runnable,
 	 */
 	@Override
 	public void handleDiscoveredPeers(List<Peer> peers, String hexInfoHash) {
-		logger.info("Got {} peer(s) in tracker response, initiating " +
-			"connections...", peers.size());
+		logger.info("Got {} peer(s) in tracker response", peers.size());
 
 		if (!this.service.isAlive()) {
 			logger.warn("Connection handler service is not available.");
 			return;
 		}
 
-    List<SharingPeer> foundPeers = new ArrayList<SharingPeer>();
+    Set<SharingPeer> foundPeers = new HashSet<SharingPeer>();
 		for (Peer peer : peers) {
 			SharingPeer match = this.getOrCreatePeer(peer, hexInfoHash);
       foundPeers.add(match);
