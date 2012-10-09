@@ -175,41 +175,30 @@ class PeerExchange {
 	 * Closes the socket and stops both incoming and outgoing threads.
 	 * </p>
 	 */
-	public void close() {
+	public void close(boolean force) {
 		this.stop = true;
 
-		if (!this.socket.isClosed()) {
-			try {
-				// Interrupt the incoming thread immediately
-				this.in.interrupt();
+    if (!this.socket.isClosed()) {
+      try {
+        this.socket.close();
 
-				// But join the outgoing thread to let it finish serving the queue.
-				this.out.join();
+        // Interrupt the incoming thread immediately
+        this.in.interrupt();
 
-				// Finally, close the socket
-				this.socket.close();
-			} catch (InterruptedException ie) {
-				// Ignore
-			} catch (IOException ioe) {
-				// Ignore
-			}
-		}
+        if (force) {
+          this.out.interrupt();
+        }
+
+        this.out.join();
+        this.in.join();
+      } catch (IOException e) {
+        //
+      } catch (InterruptedException e) {
+        //
+      }
+    }
 
 		logger.debug("Peer exchange with {} closed.", this.peer);
-	}
-
-	public void terminate() {
-		this.stop = true;
-
-		try {
-			this.socket.close();
-			this.in.interrupt();
-			this.out.interrupt();
-		} catch (IOException ioe) {
-			// Ignore
-		}
-
-		logger.debug("Terminated peer exchange with {}.", this.peer);
 	}
 
 	/**

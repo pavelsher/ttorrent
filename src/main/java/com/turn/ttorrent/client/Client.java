@@ -596,12 +596,6 @@ public class Client implements Runnable,
 	 */
 	@Override
 	public void handleDiscoveredPeers(List<Peer> peers, String hexInfoHash) {
-		if (peers == null || peers.isEmpty()) {
-			// No peers returned by the tracker. Apparently we're alone on
-			// this one for now.
-			return;
-		}
-
 		logger.info("Got {} peer(s) in tracker response, initiating " +
 			"connections...", peers.size());
 
@@ -610,8 +604,10 @@ public class Client implements Runnable,
 			return;
 		}
 
+    List<SharingPeer> foundPeers = new ArrayList<SharingPeer>();
 		for (Peer peer : peers) {
 			SharingPeer match = this.getOrCreatePeer(peer, hexInfoHash);
+      foundPeers.add(match);
 
 			synchronized (match) {
 				// Attempt to connect to the peer if and only if:
@@ -620,13 +616,26 @@ public class Client implements Runnable,
 				//	   of connecting to peers that need to download
 				//     something), or we are a seeder but we're still
 				//     willing to initiate some out bound connections.
-				if (match.isConnected() || this.isSeed(hexInfoHash)) {
-					return;
+				if (match.isConnected() || this.isSeed(hexInfoHash) || match.getTorrent().isFinished()) {
+					continue;
 				}
 
 				this.service.connect(match);
 			}
 		}
+
+    List<SharingPeer> toRemove = new ArrayList<SharingPeer>();
+    for (SharingPeer peer: this.peers) {
+      if (peer.getTorrentHexInfoHash().equals(hexInfoHash) && !foundPeers.contains(peer)) {
+        toRemove.add(peer);
+      }
+    }
+
+    this.peers.removeAll(toRemove);
+    for (SharingPeer peer: toRemove) {
+      peer.unbind(true);
+    }
+
 	}
 
 

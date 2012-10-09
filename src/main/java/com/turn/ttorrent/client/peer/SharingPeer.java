@@ -33,6 +33,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 
 
@@ -95,8 +96,9 @@ public class SharingPeer extends Peer implements MessageListener {
 	private SocketChannel socketChannel;
 
 	private Set<PeerActivityListener> listeners;
+  private volatile Future connectTask;
 
-	/**
+  /**
 	 * Create a new sharing peer on a given torrent.
 	 *
 	 * @param ip The peer's IP address.
@@ -313,17 +315,18 @@ public class SharingPeer extends Peer implements MessageListener {
 			this.send(PeerMessage.NotInterestedMessage.craft());
 		}
 
-		synchronized (this.exchangeLock) {
-			if (this.exchange != null) {
-				if (force) {
-					this.exchange.terminate();
-				} else {
-					this.exchange.close();
-				}
+    PeerExchange exchangeCopy;
+    synchronized (this.exchangeLock) {
+      exchangeCopy = exchange;
+    }
 
-				this.exchange = null;
-			}
-		}
+    if (exchangeCopy != null) {
+      exchangeCopy.close(force);
+    }
+
+    synchronized (this.exchangeLock) {
+      this.exchange = null;
+    }
 
 		this.firePeerDisconnected();
 		this.requestedPiece = null;
@@ -737,7 +740,17 @@ public class SharingPeer extends Peer implements MessageListener {
 		}
 	}
 
-	/**
+  public void setConnectTask(Future connectTask) {
+    Future old = this.connectTask;
+    if (old != null) old.cancel(true);
+    this.connectTask = connectTask;
+  }
+
+  public Future getConnectTask() {
+    return this.connectTask;
+  }
+
+  /**
 	 * Download rate comparator.
 	 *
 	 * <p>

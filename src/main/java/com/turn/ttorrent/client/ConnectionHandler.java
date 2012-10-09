@@ -85,7 +85,7 @@ public class ConnectionHandler implements Runnable {
 	private Set<CommunicationListener> listeners;
 	private ExecutorService executor;
 	private Thread thread;
-	private boolean stop;
+	private volatile boolean stop;
 
 	/**
 	 * Create and start a new listening service for out torrent, reporting
@@ -192,7 +192,12 @@ public class ConnectionHandler implements Runnable {
 
 		if (this.thread != null && this.thread.isAlive()) {
 			this.thread.interrupt();
-		}
+      try {
+        this.thread.join();
+      } catch (InterruptedException e) {
+        //
+      }
+    }
 
 		if (this.executor != null && !this.executor.isShutdown()) {
 			this.executor.shutdownNow();
@@ -322,7 +327,11 @@ public class ConnectionHandler implements Runnable {
 				"Connection handler is not accepting new peers at this time!");
 		}
 
-		this.executor.submit(new ConnectorTask(this, peer));
+    Future curTask = peer.getConnectTask();
+    if (curTask != null) return;
+
+		Future connectTask = this.executor.submit(new ConnectorTask(this, peer));
+    peer.setConnectTask(connectTask);
 	}
 
 	/**
@@ -450,6 +459,8 @@ public class ConnectionHandler implements Runnable {
 
 		@Override
 		public void run() {
+      if (this.peer.isConnected()) return;
+
 			Socket socket = new Socket();
 			InetSocketAddress address =
 				new InetSocketAddress(this.peer.getIp(), this.peer.getPort());
@@ -468,11 +479,17 @@ public class ConnectionHandler implements Runnable {
 				this.handler.fireNewPeerConnection(socket, hs.getPeerId(), peer.getTorrent().getHexInfoHash());
 			} catch (IOException ioe) {
 				try { socket.close(); } catch (IOException e) { }
-				this.handler.fireFailedConnection(this.peer, ioe);
-			} catch (ParseException pe) {
+        if (!this.peer.isConnected()) {
+          this.handler.fireFailedConnection(this.peer, ioe);
+        }
+      } catch (ParseException pe) {
 				try { socket.close(); } catch (IOException e) { }
-				this.handler.fireFailedConnection(this.peer, pe);
-			}
+        if (!this.peer.isConnected()) {
+          this.handler.fireFailedConnection(this.peer, pe);
+        }
+      } finally {
+        peer.setConnectTask(null);
+      }
 		}
 	}
 }
