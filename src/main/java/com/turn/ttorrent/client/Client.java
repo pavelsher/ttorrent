@@ -625,7 +625,7 @@ public class Client implements Runnable,
 
     List<SharingPeer> toRemove = new ArrayList<SharingPeer>();
     for (SharingPeer peer: this.peers) {
-      if (peer.getTorrentHexInfoHash().equals(hexInfoHash) && !foundPeers.contains(peer)) {
+      if (peer.getTorrentHexInfoHash().equals(hexInfoHash) && !foundPeers.contains(peer) && !peer.isConnected()) {
         toRemove.add(peer);
       }
     }
