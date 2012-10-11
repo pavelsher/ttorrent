@@ -19,9 +19,7 @@ import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 
@@ -47,8 +45,6 @@ public class FileStorage implements TorrentByteStorage {
 	private final long offset;
 	private final long size;
 
-	private RandomAccessFile raf;
-	private FileChannel channel;
 	private File current;
 
 	public FileStorage(File file, long size) throws IOException {
@@ -78,13 +74,15 @@ public class FileStorage implements TorrentByteStorage {
 			this.current = this.target;
 		}
 
-		this.raf = new RandomAccessFile(this.current, "rw");
+    RandomAccessFile raf = new RandomAccessFile(this.current, "rw");
+    try {
+      // Set the file length to the appropriate size, eventually truncating
+      // or extending the file if it already exists with a different size.
+      raf.setLength(this.size);
+    } finally {
+      raf.close();
+    }
 
-		// Set the file length to the appropriate size, eventually truncating
-		// or extending the file if it already exists with a different size.
-		this.raf.setLength(this.size);
-
-		this.channel = raf.getChannel();
 		logger.info("Initialized byte storage file at {} " +
 			"({}+{} byte(s)).",
 			new Object[] {
@@ -111,12 +109,21 @@ public class FileStorage implements TorrentByteStorage {
 			throw new IllegalArgumentException("Invalid storage read request!");
 		}
 
-		int bytes = this.channel.read(buffer, offset);
-		if (bytes < requested) {
-			throw new IOException("Storage underrun!");
-		}
-
-		return bytes;
+    FileInputStream fis = new FileInputStream(this.current);
+    FileChannel channel = null;
+    try {
+      channel = fis.getChannel();
+      int bytes = channel.read(buffer, offset);
+      if (bytes < requested) {
+        throw new IOException("Storage underrun!");
+      }
+      return bytes;
+    } finally {
+      if (channel != null) {
+        channel.close();
+      }
+      fis.close();
+    }
 	}
 
 	@Override
@@ -127,36 +134,38 @@ public class FileStorage implements TorrentByteStorage {
 			throw new IllegalArgumentException("Invalid storage write request!");
 		}
 
-		return this.channel.write(buffer, offset);
+    FileOutputStream fos = new FileOutputStream(this.current);
+    FileChannel channel = null;
+    try {
+      channel = fos.getChannel();
+      return channel.write(buffer, offset);
+    } finally {
+      if (channel != null) {
+        channel.close();
+      }
+      fos.close();
+    }
 	}
 
 	@Override
 	public synchronized void close() throws IOException {
-		this.channel.force(true);
-		this.raf.close();
 	}
 
 	/** Move the partial file to its final location.
 	 */
 	@Override
 	public synchronized void finish() throws IOException {
-		this.channel.force(true);
-
 		// Nothing more to do if we're already on the target file.
 		if (this.isFinished()) {
 			return;
 		}
 
-		this.raf.close();
 		FileUtils.deleteQuietly(this.target);
 		FileUtils.moveFile(this.current, this.target);
 
 		logger.debug("Re-opening torrent byte storage at {}.",
 				this.target.getAbsolutePath());
 
-		this.raf = new RandomAccessFile(this.target, "rw");
-		this.raf.setLength(this.size);
-		this.channel = this.raf.getChannel();
 		this.current = this.target;
 
 		FileUtils.deleteQuietly(this.partial);

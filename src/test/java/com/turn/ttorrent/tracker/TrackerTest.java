@@ -6,6 +6,7 @@ import com.turn.ttorrent.client.Client;
 import com.turn.ttorrent.client.SharedTorrent;
 import com.turn.ttorrent.common.Torrent;
 import junit.framework.TestCase;
+import org.apache.commons.io.FileUtils;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -17,6 +18,8 @@ import java.net.InetSocketAddress;
 import java.net.URISyntaxException;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
+import java.util.zip.CRC32;
+import java.util.zip.Checksum;
 
 @Test
 public class TrackerTest extends TestCase {
@@ -52,6 +55,7 @@ public class TrackerTest extends TestCase {
       leech.download();
 
       waitForFileInDir(downloadDir, "file1.jar");
+      assertFilesEqual(new File(TEST_RESOURCES + "/parentFiles/file1.jar"), new File(downloadDir, "file1.jar"));
     } finally {
       leech.stop(true);
       seeder.stop(true);
@@ -131,7 +135,7 @@ public class TrackerTest extends TestCase {
   }
 
   public void download_multiple_files() throws IOException, NoSuchAlgorithmException, InterruptedException, URISyntaxException {
-    int numFiles = 10;
+    int numFiles = 20;
     this.tracker.setAcceptForeignTorrents(true);
 
     final File srcDir = tempFiles.createTempDir();
@@ -182,8 +186,11 @@ public class TrackerTest extends TestCase {
   }
 
   private Set<String> listFileNames(File downloadDir) {
+    if (downloadDir == null) return Collections.emptySet();
     Set<String> names = new HashSet<String>();
-    for (File f: downloadDir.listFiles()) {
+    File[] files = downloadDir.listFiles();
+    if (files == null) return Collections.emptySet();
+    for (File f: files) {
       names.add(f.getName());
     }
     return names;
@@ -211,7 +218,7 @@ public class TrackerTest extends TestCase {
       leech.download();
 
       waitForFileInDir(downloadDir, tempFile.getName());
-      assertEquals(tempFile.length(), new File(downloadDir, tempFile.getName()).length());
+      assertFilesEqual(tempFile, new File(downloadDir, tempFile.getName()));
     } finally {
       seeder.stop(true);
       leech.stop(true);
@@ -334,5 +341,12 @@ public class TrackerTest extends TestCase {
 
   private void stopTracker() {
     this.tracker.stop();
+  }
+
+  private void assertFilesEqual(File f1, File f2) throws IOException {
+    assertEquals("Files size differs", f1.length(), f2.length());
+    Checksum c1 = FileUtils.checksum(f1, new CRC32());
+    Checksum c2 = FileUtils.checksum(f2, new CRC32());
+    assertEquals(c1.getValue(), c2.getValue());
   }
 }
