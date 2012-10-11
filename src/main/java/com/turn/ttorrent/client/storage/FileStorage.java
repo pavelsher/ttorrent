@@ -109,10 +109,10 @@ public class FileStorage implements TorrentByteStorage {
 			throw new IllegalArgumentException("Invalid storage read request!");
 		}
 
-    FileInputStream fis = new FileInputStream(this.current);
+    RandomAccessFile raf = new RandomAccessFile(this.current, "r");
     FileChannel channel = null;
     try {
-      channel = fis.getChannel();
+      channel = raf.getChannel();
       int bytes = channel.read(buffer, offset);
       if (bytes < requested) {
         throw new IOException("Storage underrun!");
@@ -122,7 +122,7 @@ public class FileStorage implements TorrentByteStorage {
       if (channel != null) {
         channel.close();
       }
-      fis.close();
+      raf.close();
     }
 	}
 
@@ -134,16 +134,16 @@ public class FileStorage implements TorrentByteStorage {
 			throw new IllegalArgumentException("Invalid storage write request!");
 		}
 
-    FileOutputStream fos = new FileOutputStream(this.current);
+    RandomAccessFile raf = new RandomAccessFile(this.current, "rw");
     FileChannel channel = null;
     try {
-      channel = fos.getChannel();
+      channel = raf.getChannel();
       return channel.write(buffer, offset);
     } finally {
       if (channel != null) {
         channel.close();
       }
-      fos.close();
+      raf.close();
     }
 	}
 
@@ -164,7 +164,7 @@ public class FileStorage implements TorrentByteStorage {
 		FileUtils.moveFile(this.current, this.target);
 
 		logger.debug("Re-opening torrent byte storage at {}.",
-				this.target.getAbsolutePath());
+        this.target.getAbsolutePath());
 
 		this.current = this.target;
 
