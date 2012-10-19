@@ -22,6 +22,7 @@ import com.turn.ttorrent.client.peer.PeerActivityListener;
 import com.turn.ttorrent.client.peer.SharingPeer;
 import com.turn.ttorrent.common.Peer;
 import com.turn.ttorrent.common.Torrent;
+import com.turn.ttorrent.common.TorrentHash;
 import com.turn.ttorrent.common.protocol.PeerMessage;
 import com.turn.ttorrent.common.protocol.TrackerMessage;
 import jargs.gnu.CmdLineParser;
@@ -161,11 +162,13 @@ public class Client implements Runnable,
     this.announce.addTorrent(torrent, this);
   }
 
-  public void removeTorrent(SharedTorrent torrent) {
-    this.announce.removeTorrent(torrent);
-    this.torrents.remove(torrent.getHexInfoHash());
-    torrent.setClientState(ClientState.DONE);
-    torrent.close();
+  public void removeTorrent(TorrentHash torrentHash) {
+    this.announce.removeTorrent(torrentHash);
+    SharedTorrent torrent = this.torrents.remove(torrentHash.getHexInfoHash());
+    if (torrent != null) {
+      torrent.setClientState(ClientState.DONE);
+      torrent.close();
+    }
   }
 
 

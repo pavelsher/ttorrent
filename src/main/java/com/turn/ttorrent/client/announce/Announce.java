@@ -17,6 +17,7 @@ package com.turn.ttorrent.client.announce;
 
 import com.turn.ttorrent.client.SharedTorrent;
 import com.turn.ttorrent.common.Peer;
+import com.turn.ttorrent.common.TorrentHash;
 import com.turn.ttorrent.common.protocol.TrackerMessage.AnnounceRequestMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,6 +25,7 @@ import org.slf4j.LoggerFactory;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.net.UnknownServiceException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -90,8 +92,14 @@ public class Announce implements Runnable {
     }
   }
 
-  public void removeTorrent(SharedTorrent torrent) {
-    this.torrents.remove(torrent);
+  public void removeTorrent(TorrentHash torrent) {
+    List<SharedTorrent> toRemove = new ArrayList<SharedTorrent>();
+    for (SharedTorrent st: this.torrents) {
+      if (st.getHexInfoHash().equals(torrent.getHexInfoHash())) {
+        toRemove.add(st);
+      }
+    }
+    this.torrents.removeAll(toRemove);
   }
 
 	/**
