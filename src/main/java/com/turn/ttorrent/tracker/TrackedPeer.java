@@ -50,7 +50,7 @@ public class TrackedPeer extends Peer {
 	private static final Logger logger =
 		LoggerFactory.getLogger(TrackedPeer.class);
 
-	private static final int FRESH_TIME_SECONDS = 30;
+	private static final int FRESH_TIME_SECONDS = 60;
 
 	private long uploaded;
 	private long downloaded;
