@@ -233,6 +233,42 @@ public class TrackerTest extends TestCase {
     assertEquals(1, this.tracker.getTrackedTorrents().size());
   }
 
+  public void more_than_one_seeder_for_same_torrent() throws IOException, NoSuchAlgorithmException, InterruptedException, URISyntaxException {
+    this.tracker.setAcceptForeignTorrents(true);
+    assertEquals(0, this.tracker.getTrackedTorrents().size());
+
+    int numSeeders = 5;
+    List<Client> seeders = new ArrayList<Client>();
+    for (int i=0; i<numSeeders; i++) {
+      seeders.add(createClient());
+    }
+
+    try {
+      File tempFile = tempFiles.createTempFile(100 * 1024);
+
+      Torrent torrent = Torrent.create(tempFile, this.tracker.getAnnounceUrl().toURI(), "Test");
+      File torrentFile = new File(tempFile.getParentFile(), tempFile.getName() + ".torrent");
+      torrent.save(torrentFile);
+
+      for (int i=0; i<numSeeders; i++) {
+        Client client = seeders.get(i);
+        client.addTorrent(SharedTorrent.fromFile(torrentFile, tempFile.getParentFile(), false));
+        client.share();
+      }
+
+      waitForPeers(numSeeders);
+
+      Collection<TrackedTorrent> torrents = this.tracker.getTrackedTorrents();
+      assertEquals(1, torrents.size());
+      assertEquals(numSeeders, torrents.iterator().next().seeders());
+    } finally {
+      for (Client client: seeders) {
+        client.stop();
+      }
+    }
+
+  }
+
   private void waitForSeeder(final byte[] torrentHash) {
     new WaitFor() {
       @Override
