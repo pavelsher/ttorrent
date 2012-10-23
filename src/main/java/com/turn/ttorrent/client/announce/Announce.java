@@ -200,7 +200,9 @@ public class Announce implements Runnable {
 				event = AnnounceRequestMessage.RequestEvent.NONE;
 			} catch (AnnounceException ae) {
 				logger.warn(ae.getMessage());
-			}
+			} catch (Exception e) {
+        logger.warn(e.getMessage(), e);
+      }
 
 			try {
 				Thread.sleep(this.interval * 1000);
