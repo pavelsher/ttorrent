@@ -60,7 +60,7 @@ public class TrackedTorrent implements TorrentHash {
 	private static final int DEFAULT_ANSWER_NUM_PEERS = 30;
 
 	/** Default announce interval requested from peers, in seconds. */
-	private static final int DEFAULT_ANNOUNCE_INTERVAL_SECONDS = 10;
+	private static final int DEFAULT_ANNOUNCE_INTERVAL_SECONDS = 20;
 
 	private int answerPeers;
 	private int announceInterval;

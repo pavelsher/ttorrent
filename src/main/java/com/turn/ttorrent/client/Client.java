@@ -375,7 +375,7 @@ public class Client implements Runnable,
 		}
 
     for (SharedTorrent torrent: this.torrents.values()) {
-      logger.info("{} {}/{} pieces ({}%) [{}/{}] with {}/{} peers at {}/{} kB/s.",
+      logger.debug("{} {}/{} pieces ({}%) [{}/{}] with {}/{} peers at {}/{} kB/s.",
     			new Object[] {
     				torrent.getClientState().name(),
     				torrent.getCompletedPieces().cardinality(),
