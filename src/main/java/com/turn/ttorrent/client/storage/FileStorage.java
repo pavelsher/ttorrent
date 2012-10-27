@@ -19,7 +19,9 @@ import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 
@@ -46,8 +48,10 @@ public class FileStorage implements TorrentByteStorage {
 	private final long size;
 
 	private File current;
+  private RandomAccessFile raf;
+  private Thread closeTask;
 
-	public FileStorage(File file, long size) throws IOException {
+  public FileStorage(File file, long size) throws IOException {
 		this(file, 0, size);
 	}
 
@@ -74,15 +78,6 @@ public class FileStorage implements TorrentByteStorage {
 			this.current = this.target;
 		}
 
-    RandomAccessFile raf = new RandomAccessFile(this.current, "rw");
-    try {
-      // Set the file length to the appropriate size, eventually truncating
-      // or extending the file if it already exists with a different size.
-      raf.setLength(this.size);
-    } finally {
-      raf.close();
-    }
-
 		logger.info("Initialized byte storage file at {} " +
 			"({}+{} byte(s)).",
 			new Object[] {
@@ -92,7 +87,52 @@ public class FileStorage implements TorrentByteStorage {
 			});
 	}
 
-	protected long offset() {
+  private RandomAccessFile openFile() throws IOException {
+    try {
+      if (this.raf != null) {
+        return this.raf;
+      }
+      this.raf = new RandomAccessFile(this.current, "rw");
+      if (this.raf.length() != this.size) {
+        this.raf.setLength(this.size);
+      }
+      return this.raf;
+    } finally {
+      scheduleFileClose();
+    }
+  }
+
+  private void scheduleFileClose() {
+    if (this.closeTask != null) {
+      this.closeTask.interrupt();
+    }
+
+    if (this.closeTask == null || !this.closeTask.isAlive()) {
+      this.closeTask = new Thread(new Runnable() {
+        @Override
+        public void run() {
+          boolean wait = true;
+          while (wait) {
+            try {
+              Thread.sleep(1000);
+              wait = false;
+            } catch (InterruptedException e) {
+              //
+            }
+          }
+
+          try {
+            close();
+          } catch (IOException e) {
+            //
+          }
+        }
+      }, "Close file thread: " + this.current.getAbsolutePath());
+      this.closeTask.start();
+    }
+  }
+
+  protected long offset() {
 		return this.offset;
 	}
 
@@ -109,21 +149,13 @@ public class FileStorage implements TorrentByteStorage {
 			throw new IllegalArgumentException("Invalid storage read request!");
 		}
 
-    RandomAccessFile raf = new RandomAccessFile(this.current, "r");
-    FileChannel channel = null;
-    try {
-      channel = raf.getChannel();
-      int bytes = channel.read(buffer, offset);
-      if (bytes < requested) {
-        throw new IOException("Storage underrun!");
-      }
-      return bytes;
-    } finally {
-      if (channel != null) {
-        channel.close();
-      }
-      raf.close();
+    RandomAccessFile raf = openFile();
+    FileChannel channel = raf.getChannel();
+    int bytes = channel.read(buffer, offset);
+    if (bytes < requested) {
+      throw new IOException("Storage underrun!");
     }
+    return bytes;
 	}
 
 	@Override
@@ -134,21 +166,17 @@ public class FileStorage implements TorrentByteStorage {
 			throw new IllegalArgumentException("Invalid storage write request!");
 		}
 
-    RandomAccessFile raf = new RandomAccessFile(this.current, "rw");
-    FileChannel channel = null;
-    try {
-      channel = raf.getChannel();
-      return channel.write(buffer, offset);
-    } finally {
-      if (channel != null) {
-        channel.close();
-      }
-      raf.close();
-    }
-	}
+    RandomAccessFile raf = openFile();
+    FileChannel channel = raf.getChannel();
+    return channel.write(buffer, offset);
+  }
 
 	@Override
 	public synchronized void close() throws IOException {
+    if (this.raf != null) {
+      this.raf.close();
+      this.raf = null;
+    }
 	}
 
 	/** Move the partial file to its final location.
@@ -159,6 +187,8 @@ public class FileStorage implements TorrentByteStorage {
 		if (this.isFinished()) {
 			return;
 		}
+
+    close();
 
 		FileUtils.deleteQuietly(this.target);
 		FileUtils.moveFile(this.current, this.target);

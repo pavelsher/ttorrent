@@ -769,7 +769,7 @@ public class SharedTorrent extends Torrent implements PeerActivityListener {
 	public synchronized void handlePieceSent(SharingPeer peer, Piece piece) {
 		logger.trace("Completed upload of {} to {}.", piece, peer);
 		this.uploaded += piece.size();
-	}
+  }
 
 	/**
 	 * Piece download completion handler.
@@ -831,7 +831,13 @@ public class SharedTorrent extends Torrent implements PeerActivityListener {
 			this.requestedPieces.set(requested.getIndex(), false);
 		}
 
-		logger.debug("Peer {} went away with {} piece(s) [{}/{}/{}].",
+    try {
+      this.bucket.close();
+    } catch (IOException e) {
+      logger.warn("I/O error on attempt to close file storage: " + e.toString());
+    }
+
+    logger.debug("Peer {} went away with {} piece(s) [{}/{}/{}].",
 			new Object[] {
 				peer,
 				availablePieces.cardinality(),
@@ -845,7 +851,7 @@ public class SharedTorrent extends Torrent implements PeerActivityListener {
 				this.requestedPieces.cardinality(),
 				this.requestedPieces
 			});
-	}
+  }
 
 	@Override
 	public synchronized void handleIOException(SharingPeer peer,
